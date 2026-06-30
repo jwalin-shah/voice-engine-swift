@@ -1,0 +1,879 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.VoiceEngine-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/sources",
+      "importPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/AppController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/AudioCapture.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CLI.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CleanupService.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CommandParser.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/DaemonService.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/HUDWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/HotkeyMonitor.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/MLStateDebug.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/MoonshineInfer.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/Paster.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/SettingsWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/VocabularyService.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "VoiceEngine",
+      "moduleOutputPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules/VoiceEngine.swiftmodule",
+      "objects" : [
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/AppController.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/AudioCapture.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CLI.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CleanupService.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CommandParser.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/DaemonService.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/HUDWindow.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/HotkeyMonitor.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/MLStateDebug.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/MoonshineInfer.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/Paster.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/SettingsWindow.swift.o",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/VocabularyService.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j18",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/include/VoiceEngine-Swift.h",
+        "-swift-version",
+        "5",
+        "-Xcc",
+        "-DACCELERATE_NEW_LAPACK",
+        "-Xcc",
+        "-DACCELERATE_LAPACK_ILP64",
+        "-I",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-L",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-plugin-path",
+        "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "voice_engine_swift"
+      ],
+      "outputFileMapPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/AppController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/AudioCapture.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CLI.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CleanupService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CommandParser.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/DaemonService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/HUDWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/HotkeyMonitor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/MLStateDebug.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/MoonshineInfer.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/Paster.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/SettingsWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/VocabularyService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules/VoiceEngine.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/AppController.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/AudioCapture.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CLI.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CleanupService.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CommandParser.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/DaemonService.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/HUDWindow.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/HotkeyMonitor.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/MLStateDebug.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/MoonshineInfer.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/Paster.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/SettingsWindow.swift",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/VocabularyService.swift"
+      ],
+      "tempsPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.VoiceEngineTests-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/sources",
+      "importPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Tests/Runner/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules/VoiceEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "VoiceEngineTests",
+      "moduleOutputPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules/VoiceEngineTests.swiftmodule",
+      "objects" : [
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/main.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j18",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "VoiceEngineTests_main",
+        "-swift-version",
+        "6",
+        "-I",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-L",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-plugin-path",
+        "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "voice_engine_swift"
+      ],
+      "outputFileMapPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules/VoiceEngineTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Tests/Runner/main.swift"
+      ],
+      "tempsPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.voice-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice.build/sources",
+      "importPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/voice/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules/VoiceEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "voice",
+      "moduleOutputPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules/voice.swiftmodule",
+      "objects" : [
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice.build/main.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j18",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "voice_main",
+        "-swift-version",
+        "6",
+        "-I",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-L",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-plugin-path",
+        "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "voice_engine_swift"
+      ],
+      "outputFileMapPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules/voice.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/voice/main.swift"
+      ],
+      "tempsPath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "VoiceEngine" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "VoiceEngine",
+      "-package-name",
+      "voice_engine_swift",
+      "-c",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/AppController.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/AudioCapture.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CLI.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CleanupService.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CommandParser.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/DaemonService.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/HUDWindow.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/HotkeyMonitor.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/MLStateDebug.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/MoonshineInfer.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/Paster.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/SettingsWindow.swift",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/VocabularyService.swift",
+      "-I",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j18",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/include/VoiceEngine-Swift.h",
+      "-swift-version",
+      "5",
+      "-Xcc",
+      "-DACCELERATE_NEW_LAPACK",
+      "-Xcc",
+      "-DACCELERATE_LAPACK_ILP64",
+      "-I",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-L",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-plugin-path",
+      "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "voice_engine_swift",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ],
+    "VoiceEngineTests" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "VoiceEngineTests",
+      "-package-name",
+      "voice_engine_swift",
+      "-c",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Tests/Runner/main.swift",
+      "-I",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j18",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "VoiceEngineTests_main",
+      "-swift-version",
+      "6",
+      "-I",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-L",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-plugin-path",
+      "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "voice_engine_swift",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ],
+    "voice" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "voice",
+      "-package-name",
+      "voice_engine_swift",
+      "-c",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/voice/main.swift",
+      "-I",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j18",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "voice_main",
+      "-swift-version",
+      "6",
+      "-I",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-L",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-plugin-path",
+      "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "voice_engine_swift",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "VoiceEngine" : [
+
+    ],
+    "VoiceEngineTests" : [
+      "VoiceEngine"
+    ],
+    "voice" : [
+      "VoiceEngine"
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/AppController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/AudioCapture.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CLI.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CleanupService.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/CommandParser.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/DaemonService.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/HUDWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/HotkeyMonitor.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/MLStateDebug.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/MoonshineInfer.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/Paster.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/SettingsWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/VoiceEngine/VocabularyService.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/sources"
+    },
+    "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Tests/Runner/main.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/sources"
+    },
+    "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+    },
+    "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice-entitlement.plist" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<entitlement-plist>"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice-entitlement.plist"
+    },
+    "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice-tests-entitlement.plist" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<entitlement-plist>"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice-tests-entitlement.plist"
+    },
+    "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice-tests.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/AppController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/AudioCapture.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CLI.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CleanupService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CommandParser.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/DaemonService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/HUDWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/HotkeyMonitor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/MLStateDebug.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/MoonshineInfer.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/Paster.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/SettingsWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/VocabularyService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/main.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice-tests.product/Objects.LinkFileList"
+    },
+    "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Sources/voice/main.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice.build/sources"
+    },
+    "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/AppController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/AudioCapture.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CLI.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CleanupService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/CommandParser.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/DaemonService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/HUDWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/HotkeyMonitor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/MLStateDebug.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/MoonshineInfer.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/Paster.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/SettingsWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngine.build/VocabularyService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice.build/main.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/voice.product/Objects.LinkFileList"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/primary.swiftdeps"
+  },
+  "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/Tests/Runner/main.swift": {
+    "dependencies": "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/main.d",
+    "object": "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/main.swift.o",
+    "swiftmodule": "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/main.swiftdeps",
+    "diagnostics": "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/debug/VoiceEngineTests.build/main.dia"
+  }
+}
