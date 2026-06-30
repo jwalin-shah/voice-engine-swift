@@ -39,20 +39,33 @@ public enum Paster {
         return AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, text as CFTypeRef) == .success
     }
 
-    /// CGEvent unicode — character-at-a-time.
+    /// CGEvent unicode — batch.
     private static func pasteViaCGEvent(_ text: String) -> Bool {
         let source = CGEventSource(stateID: .combinedSessionState)
+        var chars = [UniChar]()
+        chars.reserveCapacity(text.utf16.count)
         for scalar in text.unicodeScalars {
             let value = scalar.value
             if value < 0x20 && value != 0x0A && value != 0x09 { continue }
             if (0xD800...0xDFFF).contains(value) { continue }
-            let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
-            var uniChar = UniChar(value)
-            down?.keyboardSetUnicodeString(stringLength: 1, unicodeString: &uniChar)
-            down?.post(tap: .cghidEventTap)
-            let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
-            up?.post(tap: .cghidEventTap)
+            if value > UInt32(UInt16.max) {
+                let leading = UniChar((value - 0x10000) >> 10) | 0xD800
+                let trailing = UniChar((value - 0x10000) & 0x3FF) | 0xDC00
+                chars.append(leading)
+                chars.append(trailing)
+            } else {
+                chars.append(UniChar(value))
+            }
         }
+        guard !chars.isEmpty else { return false }
+        let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
+        let charCount = chars.count
+        chars.withUnsafeMutableBufferPointer { ptr in
+            down?.keyboardSetUnicodeString(stringLength: charCount, unicodeString: ptr.baseAddress!)
+        }
+        down?.post(tap: .cghidEventTap)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+        up?.post(tap: .cghidEventTap)
         return true
     }
 }

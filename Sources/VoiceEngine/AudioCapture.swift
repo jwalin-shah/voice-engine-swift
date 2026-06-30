@@ -117,7 +117,10 @@ public final class AudioCapture {
         accumulator.removeAll(keepingCapacity: true)
         lastPartialSampleCount = 0
 
-        // Disable voice processing for lowest possible latency.
+        // Voice processing (beamforming) is DISABLED because the ASR model was trained on
+        // raw single-mic audio. Voice processing applies DSP that changes the frequency
+        // response, which the model doesn't handle well. Fan noise is already in the
+        // training data. VAD handles accidental triggers instead.
         try? input.setVoiceProcessingEnabled(false)
 
         let inputFormat = input.outputFormat(forBus: 0)
@@ -239,14 +242,6 @@ public final class AudioCapture {
             if total - lastPartialSampleCount >= partialIntervalSamples {
                 lastPartialSampleCount = total
                 cb(partialAccumulator)
-            }
-        }
-
-        if let cb = partialCallback {
-            let total = accumulator.count / MemoryLayout<Float>.stride
-            if total - lastPartialSampleCount >= partialIntervalSamples {
-                lastPartialSampleCount = total
-                cb(accumulator)
             }
         }
 

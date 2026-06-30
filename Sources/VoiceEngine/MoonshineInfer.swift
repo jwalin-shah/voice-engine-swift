@@ -5,7 +5,6 @@ import Foundation
 // MARK: - Constants
 
 private enum C {
-    static let bucketSizes: [Int] = [16000, 48000, 80000, 160000]
     static let S_MAX: Int = 128
     static let S_ENC_MAX: Int = 500
     static let ROT_DIM: Int = 32
@@ -40,8 +39,14 @@ public final class MoonshineEngine: @unchecked Sendable {
     private var tokenizer: SPModel?
     private var ready = false
     private let modelDir: URL
+    private let compiledCacheDir: URL
     private var cosMLArrays: [MLMultiArray]?
     private var sinMLArrays: [MLMultiArray]?
+    // Cached K/V projection weights (avoids reading 12+ files from disk per transcribe)
+    private var kWeights: [[Float]]?
+    private var vWeights: [[Float]]?
+    private var kBias: [[Float]]?
+    private var vBias: [[Float]]?
 
     struct ArchConfig {
         let NL: Int, H: Int, D: Int, HID: Int, S_MAX: Int, S_ENC_MAX: Int
@@ -49,8 +54,29 @@ public final class MoonshineEngine: @unchecked Sendable {
     }
 
     public init(modelDir: URL? = nil) {
-        self.modelDir = modelDir ?? FileManager.default.homeDirectoryForCurrentUser
+        let md = modelDir ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".cache/moonshine-coreml/tiny-streaming")
+        self.modelDir = md
+        self.compiledCacheDir = md.appendingPathComponent("compiled")
+        try? FileManager.default.createDirectory(at: compiledCacheDir, withIntermediateDirectories: true)
+    }
+
+    /// Compile .mlpackage to a persistent cache, or load the cached .mlmodelc if already compiled.
+    /// Speeds up cold start from ~5s to ~0.1s after first launch.
+    private func compileOrCached(_ mlpackage: URL) throws -> URL {
+        let name = mlpackage.deletingPathExtension().lastPathComponent
+        let cached = compiledCacheDir.appendingPathComponent("\(name).mlmodelc")
+        // Check if cached model exists and is newer than the source
+        let srcDate = (try? FileManager.default.attributesOfItem(atPath: mlpackage.path)[.modificationDate] as? Date) ?? .distantPast
+        if let cachedDate = try? FileManager.default.attributesOfItem(atPath: cached.path)[.modificationDate] as? Date,
+           cachedDate >= srcDate {
+            return cached
+        }
+        // Compile and copy to persistent cache
+        let compiled = try MLModel.compileModel(at: mlpackage)
+        try? FileManager.default.removeItem(at: cached)
+        try FileManager.default.copyItem(at: compiled, to: cached)
+        return cached
     }
 
     // MARK: - Load
@@ -71,24 +97,14 @@ public final class MoonshineEngine: @unchecked Sendable {
             throw MoonshineError.weightsNotFound(configPath.path)
         }
 
-        // Compile .mlpackage -> .mlmodelc if needed, then load
-        let encCompiled: URL
-        if encDir.pathExtension == "mlpackage" {
-            encCompiled = try MLModel.compileModel(at: encDir)
-        } else {
-            encCompiled = encDir
-        }
+        // Compile .mlpackage -> .mlmodelc (persistent cache), then load
+        let encCompiled = try compileOrCached(encDir)
         let encCfg = MLModelConfiguration()
         encCfg.computeUnits = .cpuAndNeuralEngine
         encoder = try MLModel(contentsOf: encCompiled, configuration: encCfg)
 
-        // Load bucket encoders for variable-length audio (1s/3s/5s/10s).
-        let decCompiled: URL
-        if decDir.pathExtension == "mlpackage" {
-            decCompiled = try MLModel.compileModel(at: decDir)
-        } else {
-            decCompiled = decDir
-        }
+        // Load decoder model.
+        let decCompiled = try compileOrCached(decDir)
         let decCfg = MLModelConfiguration()
         decCfg.computeUnits = .cpuOnly
         decoder = try MLModel(contentsOf: decCompiled, configuration: decCfg)
@@ -128,6 +144,25 @@ public final class MoonshineEngine: @unchecked Sendable {
         }
         cosMLArrays = cosArr
         sinMLArrays = sinArr
+
+        // Pre-load K/V projection weights into memory (avoids 12+ file reads per transcribe).
+        let HD = a.H * a.D
+        let HID = a.HID
+        var kW = [[Float]](); var vW = [[Float]]()
+        var kB = [[Float]](); var vB = [[Float]]()
+        kW.reserveCapacity(a.NL); vW.reserveCapacity(a.NL)
+        kB.reserveCapacity(a.NL); vB.reserveCapacity(a.NL)
+        for i in 0..<a.NL {
+            kW.append(try loadF32(weightsDir.appendingPathComponent("layer\(i)_k_weight.f32"), count: HD * HID))
+            vW.append(try loadF32(weightsDir.appendingPathComponent("layer\(i)_v_weight.f32"), count: HD * HID))
+            let kbPath = weightsDir.appendingPathComponent("layer\(i)_k_bias.f32")
+            kB.append(FileManager.default.fileExists(atPath: kbPath.path)
+                      ? try loadF32(kbPath, count: HD) : [Float](repeating: 0, count: HD))
+            let vbPath = weightsDir.appendingPathComponent("layer\(i)_v_bias.f32")
+            vB.append(FileManager.default.fileExists(atPath: vbPath.path)
+                      ? try loadF32(vbPath, count: HD) : [Float](repeating: 0, count: HD))
+        }
+        kWeights = kW; vWeights = vW; kBias = kB; vBias = vB
 
         ready = true
         Foundation.NSLog("[MoonshineEngine] loaded — encoder.ANE + decoder.CPU + SPM")
@@ -173,7 +208,7 @@ public final class MoonshineEngine: @unchecked Sendable {
         // 3. Build cross-KV via Accelerate gemm.
         let weightsDir = modelDir.appendingPathComponent("weights")
         let (crossK, crossV, crossMask) = try buildCrossKV(
-            hidden: hidden, S_enc: S_enc, arch: arch, weightsDir: weightsDir)
+            hidden: hidden, S_enc: S_enc, arch: arch, weightsDir)
 
 
         // 4. Decoder loop.
@@ -256,7 +291,65 @@ public final class MoonshineEngine: @unchecked Sendable {
     // MARK: - Cross-KV construction
 
     private func buildCrossKV(hidden: [Float], S_enc: Int, arch: ArchConfig,
-                               weightsDir: URL) throws -> (MLMultiArray, MLMultiArray, MLMultiArray) {
+                               _ weightsDir: URL) throws -> (MLMultiArray, MLMultiArray, MLMultiArray) {
+        guard let kWeights, let vWeights, let kBias, let vBias else {
+            // Fallback: use file-based loading (shouldn't happen if load() was called)
+            return try buildCrossKVFile(hidden: hidden, S_enc: S_enc, arch: arch, weightsDir: weightsDir)
+        }
+        let NL = arch.NL, H = arch.H, D = arch.D, HID = arch.HID
+        let HD = H * D
+        let S_ENC_MAX = arch.S_ENC_MAX
+
+        let crossK = try MLMultiArray(
+            shape: [NSNumber(value: NL), 1, NSNumber(value: H),
+                    NSNumber(value: S_ENC_MAX), NSNumber(value: D)],
+            dataType: .float32)
+        let crossV = try MLMultiArray(
+            shape: [NSNumber(value: NL), 1, NSNumber(value: H),
+                    NSNumber(value: S_ENC_MAX), NSNumber(value: D)],
+            dataType: .float32)
+        let crossMask = try MLMultiArray(
+            shape: [1, 1, 1, NSNumber(value: S_ENC_MAX)], dataType: .float32)
+
+        let ckBase = crossK.dataPointer.bindMemory(to: Float.self, capacity: NL * H * S_ENC_MAX * D)
+        let cvBase = crossV.dataPointer.bindMemory(to: Float.self, capacity: NL * H * S_ENC_MAX * D)
+        let mPtr = crossMask.dataPointer.bindMemory(to: Float.self, capacity: S_ENC_MAX)
+        let nBytes = D * MemoryLayout<Float>.stride
+
+        for i in 0..<NL {
+            let kw = kWeights[i]
+            let vw = vWeights[i]
+            var k = gemm(M: S_enc, N: HD, K: HID, A: hidden, B: kw)
+            var v = gemm(M: S_enc, N: HD, K: HID, A: hidden, B: vw)
+
+            let kbi = kBias[i]
+            for j in 0..<k.count { k[j] += kbi[j % HD] }
+            let vbi = vBias[i]
+            for j in 0..<v.count { v[j] += vbi[j % HD] }
+
+            let layerOff = i * H * S_ENC_MAX * D
+            k.withUnsafeMutableBufferPointer { kBuf in
+                v.withUnsafeMutableBufferPointer { vBuf in
+                    for h in 0..<H {
+                        let rowOff = layerOff + h * S_ENC_MAX * D
+                        for s in 0..<S_enc {
+                            let srcOff = s * HD + h * D
+                            let dstOff = rowOff + s * D
+                            memcpy(ckBase + dstOff, kBuf.baseAddress! + srcOff, nBytes)
+                            memcpy(cvBase + dstOff, vBuf.baseAddress! + srcOff, nBytes)
+                        }
+                    }
+                }
+            }
+        }
+
+        for s in 0..<S_ENC_MAX { mPtr[s] = s < S_enc ? 0.0 : -10000.0 }
+        return (crossK, crossV, crossMask)
+    }
+
+    /// File-based fallback for buildCrossKV (used if cached weights aren't available).
+    private func buildCrossKVFile(hidden: [Float], S_enc: Int, arch: ArchConfig,
+                                   weightsDir: URL) throws -> (MLMultiArray, MLMultiArray, MLMultiArray) {
         let NL = arch.NL, H = arch.H, D = arch.D, HID = arch.HID
         let HD = H * D
         let S_ENC_MAX = arch.S_ENC_MAX

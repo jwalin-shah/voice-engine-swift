@@ -4,7 +4,7 @@ import Foundation
 // MARK: - Bench (CLI mode)
 
 public enum Bench {
-    public static func bench(file path: String) async {
+    public static func bench(file path: String) {
         guard let (samples, duration) = loadWAV(path) else {
             print("Failed to load WAV: \(path)")
             exit(1)
