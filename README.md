@@ -1,8 +1,15 @@
 # VoiceEngine
 
-Zero-latency, fully-local dictation menubar app. Push Caps Lock → speak → release → text appears in your focused app.
+**v0.1** — Zero-latency, fully-local dictation menubar app. Push Caps Lock → speak → release → text appears in your focused app.
 
 No clipboard. No network. No Python at inference time.
+
+> **Definition of Done (v0.1):** Caps Lock dictation transcribes local audio via
+> Moonshine-tiny and injects text into the focused app; builds from a clean
+> checkout (`./build.sh build`); tests pass (`./build.sh test` — 62/62). ✅ Met.
+>
+> The **Next steps** below are explicitly *post-v0.1_. v0.1 ships the working MVP;
+> those are enhancements, not blockers. Resist treating them as unfinished work.
 
 ## Architecture
 
