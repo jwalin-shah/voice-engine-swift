@@ -1,0 +1,22 @@
+# Swift build artifacts
+.build/
+*.pcm
+*.o
+*.swiftmodule
+
+# Python
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Xcode
+*.xcodeproj/xcuserdata/
+DerivedData/
+
+# Model weights (large, not source)
+mlx_model/
+mlx_model_8b/
+*.safetensors
+*.mlmodelc/

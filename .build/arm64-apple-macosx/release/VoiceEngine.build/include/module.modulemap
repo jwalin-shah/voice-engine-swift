@@ -1,3 +1,0 @@
-module VoiceEngine {
-    header "/Users/jwalinshah/projects/machine-scratch/voice-engine-swift/.build/arm64-apple-macosx/release/VoiceEngine.build/include/VoiceEngine-Swift.h"
-}
