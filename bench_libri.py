@@ -4,7 +4,8 @@ import json, os, sys, subprocess, wave
 from pathlib import Path
 
 WAV_DIR = Path("/tmp/librispeech/test-clean")
-BENCH = Path("voice-engine-swift/bench.py")
+REPO_ROOT = Path(__file__).resolve().parent
+BENCH = REPO_ROOT / "bench.py"
 N = 30
 
 # Collect all WAVs and their transcripts from filenames + parquet

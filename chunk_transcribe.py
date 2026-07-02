@@ -10,9 +10,10 @@ SR = 16000
 CHUNK_SAMPLES = 10 * SR
 OVERLAP_SAMPLES = 2 * SR  # 2s overlap
 MODEL_DIR = Path.home() / ".cache" / "moonshine-coreml" / "tiny-streaming"
+REPO_ROOT = Path(__file__).resolve().parent
 
 # Import the benchmark's MoonshineBench
-sys.path.insert(0, str(Path("voice-engine-swift")))
+sys.path.insert(0, str(REPO_ROOT))
 from bench import MoonshineBench
 
 def load_audio(path):
