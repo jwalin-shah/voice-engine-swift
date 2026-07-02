@@ -106,6 +106,12 @@ def read_wav_chunks(path: str):
                 f"truncated WAVE_FORMAT_EXTENSIBLE extension: declared {extension_size} bytes, "
                 f"only {available_extension_size} available"
             )
+        valid_bits_per_sample = struct.unpack("<H", fmt[18:20])[0]
+        if valid_bits_per_sample == 0 or valid_bits_per_sample > bits_per_sample:
+            raise ValueError(
+                f"invalid WAVE_FORMAT_EXTENSIBLE valid bits per sample: "
+                f"{valid_bits_per_sample} for {bits_per_sample}-bit samples"
+            )
         subformat = fmt[24:40]
         if subformat[2:] != WAV_SUBFORMAT_GUID_TAIL:
             raise ValueError("unsupported WAVE_FORMAT_EXTENSIBLE subformat GUID")
