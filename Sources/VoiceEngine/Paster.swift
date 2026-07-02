@@ -5,13 +5,15 @@ import CoreGraphics
 /// Injects text into the focused application.
 ///
 /// Strategy (tried in order):
-///   1. CGEvent unicode — character-at-a-time, reliable, no clipboard, no Accessibility
-///   2. AXUIElement setValue — direct, fast, needs Accessibility
-///   3. Cmd+V via AppleScript — last resort, trashes clipboard
+///   1. voice-typer subprocess — compiled CGEvent binary, handles key mapping
+///   2. CGEvent unicode — character-at-a-time, no Accessibility
+///   3. AXUIElement setValue — direct, fast, needs Accessibility
+///   4. Cmd+V via AppleScript — last resort, trashes clipboard
 public enum Paster {
     @discardableResult
     public static func paste(_ text: String) -> Bool {
         guard !text.isEmpty else { return false }
+        if pasteViaVoiceTyper(text) { return true }
         if pasteViaCGEvent(text) { return true }
         if pasteViaAX(text) { return true }
         return pasteViaASE(text)
@@ -67,5 +69,23 @@ public enum Paster {
         let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
         up?.post(tap: .cghidEventTap)
         return true
+    }
+
+    /// voice-typer subprocess — compiled CGEvent binary.
+    /// Uses UCKeyTranslate-based key mapping for better compatibility.
+    /// Falls through to CGEvent if the binary is missing or fails.
+    private static func pasteViaVoiceTyper(_ text: String) -> Bool {
+        let binaryPath = "/Users/jwalinshah/local/bin/voice-typer"
+        guard FileManager.default.fileExists(atPath: binaryPath) else { return false }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: binaryPath)
+        process.arguments = [text]
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
     }
 }
