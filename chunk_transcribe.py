@@ -30,6 +30,7 @@ def inspect_wav(path):
             sample_width = w.getsampwidth()
             sample_rate = w.getframerate()
             frames = w.getnframes()
+            raw = w.readframes(frames)
     except (wave.Error, EOFError) as exc:
         reason = str(exc) or exc.__class__.__name__
         raise ValueError(f"Audio file is not a readable WAV: {path} ({reason})") from exc
@@ -42,6 +43,12 @@ def inspect_wav(path):
         raise ValueError(f"Expected {SR} Hz WAV, got {sample_rate} Hz: {path}")
     if frames <= 0:
         raise ValueError(f"Audio file has no samples: {path}")
+    expected_bytes = frames * channels * sample_width
+    if len(raw) != expected_bytes:
+        raise ValueError(
+            f"Audio file is truncated: expected {expected_bytes} bytes of PCM data, "
+            f"read {len(raw)} bytes: {path}"
+        )
 
     return frames, frames / SR
 
