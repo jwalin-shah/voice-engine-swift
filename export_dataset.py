@@ -17,7 +17,10 @@ METRICS_FILE = Path.home() / "Library" / "Logs" / "voice-engine" / "metrics.json
 
 def audio_duration_s(wav_path):
     """Return duration for supported VoiceEngine WAV archives."""
-    from bench import inspect_audio_wav
+    try:
+        from bench import inspect_audio_wav
+    except ImportError as exc:
+        raise ValueError(f"WAV duration inspection unavailable: {exc}") from exc
 
     _, duration = inspect_audio_wav(str(wav_path))
     return duration
@@ -49,8 +52,11 @@ def find_recordings():
         meta = {}
         if json_sidecar.exists():
             try:
-                meta = json.loads(json_sidecar.read_text())
-            except: pass
+                loaded_meta = json.loads(json_sidecar.read_text())
+                if isinstance(loaded_meta, dict):
+                    meta = loaded_meta
+            except (OSError, json.JSONDecodeError):
+                pass
         recordings.append({"wav": str(wav), "json": str(json_sidecar), **meta})
     return recordings
 
