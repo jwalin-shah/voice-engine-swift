@@ -52,6 +52,10 @@ def export_dataset(out_dir):
             f.write(json.dumps(entry) + "\n")
 
     print(f"Exported {len(dataset)} recordings to {outfile}")
+    if not dataset:
+        print("  No labeled recordings found.")
+        return dataset
+
     print(f"  Duration range: {min(e['duration_secs'] for e in dataset):.1f}s - {max(e['duration_secs'] for e in dataset):.1f}s")
     print(f"  Total audio: {sum(e['duration_secs'] for e in dataset):.1f}s")
     return dataset
