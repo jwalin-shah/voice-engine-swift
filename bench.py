@@ -16,12 +16,89 @@ Usage:
   python3 bench.py --iterations 10    # Average over N runs
 """
 
-import math, time, sys, os, json, struct, wave, tempfile
+import math, time, sys, os, json, struct, tempfile
 import numpy as np
 from pathlib import Path
 
 SAMPLE_RATE = 16000
 MODEL_DIR = Path.home() / ".cache" / "moonshine-coreml" / "tiny-streaming"
+
+
+def read_wav_chunks(path: str):
+    """Read basic RIFF/WAV chunks needed for PCM and IEEE-float WAV input."""
+    try:
+        with open(path, "rb") as f:
+            if f.read(4) != b"RIFF":
+                raise ValueError("missing RIFF header")
+            riff_size_raw = f.read(4)
+            if len(riff_size_raw) < 4:
+                raise ValueError("truncated RIFF header")
+            if f.read(4) != b"WAVE":
+                raise ValueError("missing WAVE header")
+
+            fmt = None
+            data = None
+            while True:
+                chunk_id = f.read(4)
+                if not chunk_id:
+                    break
+                if len(chunk_id) < 4:
+                    raise ValueError("truncated chunk header")
+                chunk_size_raw = f.read(4)
+                if len(chunk_size_raw) < 4:
+                    raise ValueError("truncated chunk size")
+                chunk_size = struct.unpack("<I", chunk_size_raw)[0]
+                chunk_data = f.read(chunk_size)
+                if len(chunk_data) < chunk_size:
+                    raise ValueError(
+                        f"truncated chunk {chunk_id.decode('ascii', errors='replace')}: "
+                        f"expected {chunk_size} bytes, read {len(chunk_data)}"
+                    )
+                if chunk_id == b"fmt ":
+                    fmt = chunk_data
+                elif chunk_id == b"data":
+                    data = chunk_data
+                if chunk_size % 2:
+                    f.read(1)
+    except OSError as exc:
+        raise ValueError(str(exc)) from exc
+
+    if fmt is None:
+        raise ValueError("missing fmt chunk")
+    if data is None:
+        raise ValueError("missing data chunk")
+    if len(fmt) < 16:
+        raise ValueError("truncated fmt chunk")
+
+    audio_format, channels, sample_rate, _, block_align, bits_per_sample = struct.unpack("<HHIIHH", fmt[:16])
+    if bits_per_sample % 8 != 0:
+        raise ValueError(f"unsupported non-byte-aligned sample width: {bits_per_sample} bits")
+    sample_width = bits_per_sample // 8
+    expected_block_align = channels * sample_width
+    if block_align != expected_block_align:
+        raise ValueError(
+            f"invalid block alignment: expected {expected_block_align}, got {block_align}"
+        )
+    if expected_block_align <= 0:
+        raise ValueError("invalid WAV channel count or sample width")
+    if len(data) % expected_block_align != 0:
+        raise ValueError(
+            f"truncated sample data: {len(data)} bytes is not divisible by frame size {expected_block_align}"
+        )
+    frames = len(data) // expected_block_align
+    return {
+        "audio_format": audio_format,
+        "channels": channels,
+        "sample_width": sample_width,
+        "sample_rate": sample_rate,
+        "frames": frames,
+        "raw": data,
+    }
+
+
+def wav_audio_format(path: str):
+    """Return the WAV fmt audio format code, e.g. 1=PCM or 3=IEEE float."""
+    return read_wav_chunks(path)["audio_format"]
 
 
 def inspect_audio_wav(path: str) -> tuple[int, float]:
@@ -33,20 +110,28 @@ def inspect_audio_wav(path: str) -> tuple[int, float]:
         raise ValueError(f"Audio path is not a file: {wav_path}")
 
     try:
-        with wave.open(str(wav_path), "rb") as w:
-            channels = w.getnchannels()
-            sample_width = w.getsampwidth()
-            sample_rate = w.getframerate()
-            frames = w.getnframes()
-            raw = w.readframes(frames)
-    except (wave.Error, EOFError) as exc:
+        info = read_wav_chunks(str(wav_path))
+    except ValueError as exc:
         reason = str(exc) or exc.__class__.__name__
         raise ValueError(f"Audio file is not a readable WAV: {wav_path} ({reason})") from exc
+    channels = info["channels"]
+    sample_width = info["sample_width"]
+    sample_rate = info["sample_rate"]
+    frames = info["frames"]
+    raw = info["raw"]
+    audio_format = info["audio_format"]
 
     if channels != 1:
         raise ValueError(f"Expected mono WAV, got {channels} channels: {wav_path}")
-    if sample_width != 2:
-        raise ValueError(f"Expected 16-bit PCM WAV, got {sample_width * 8}-bit samples: {wav_path}")
+    if audio_format == 1 and sample_width == 2:
+        pass
+    elif audio_format == 3 and sample_width == 4:
+        pass
+    else:
+        raise ValueError(
+            f"Expected 16-bit PCM or 32-bit float WAV, got format={audio_format} "
+            f"with {sample_width * 8}-bit samples: {wav_path}"
+        )
     if sample_rate != SAMPLE_RATE:
         raise ValueError(f"Expected {SAMPLE_RATE} Hz WAV, got {sample_rate} Hz: {wav_path}")
     if frames <= 0:
@@ -54,21 +139,32 @@ def inspect_audio_wav(path: str) -> tuple[int, float]:
     expected_bytes = frames * channels * sample_width
     if len(raw) != expected_bytes:
         raise ValueError(
-            f"Audio file is truncated: expected {expected_bytes} bytes of PCM data, "
+            f"Audio file is truncated: expected {expected_bytes} bytes of sample data, "
             f"read {len(raw)} bytes: {wav_path}"
         )
+    if audio_format == 3 and sample_width == 4:
+        samples = np.frombuffer(raw, dtype="<f4")
+        if not np.all(np.isfinite(samples)):
+            raise ValueError(f"Audio file contains non-finite float samples: {wav_path}")
 
     return frames, frames / SAMPLE_RATE
 
 
 def load_audio_wav(path: str) -> np.ndarray:
-    """Load 16-bit PCM mono WAV as float32 [-1, 1]."""
+    """Load mono WAV as float32 [-1, 1]. Supports 16-bit PCM and 32-bit float."""
     inspect_audio_wav(path)
-    with wave.open(path, "rb") as w:
-        n = w.getnframes()
-        raw = w.readframes(n)
+    info = read_wav_chunks(path)
+    raw = info["raw"]
+    n = info["frames"]
+    if info["audio_format"] == 1 and info["sample_width"] == 2:
         samples = struct.unpack("<" + "h" * n, raw)
         return np.array(samples, dtype=np.float32) / 32768.0
+    if info["audio_format"] == 3 and info["sample_width"] == 4:
+        samples = np.frombuffer(raw, dtype="<f4").astype(np.float32)
+        if not np.all(np.isfinite(samples)):
+            raise ValueError(f"Audio file contains non-finite float samples: {path}")
+        return samples
+    raise ValueError(f"Unsupported WAV format after validation: {path}")
 
 
 def generate_test_audio(duration_s: float = 3.0) -> np.ndarray:
