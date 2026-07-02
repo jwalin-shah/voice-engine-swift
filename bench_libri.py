@@ -59,8 +59,12 @@ def load_refs():
     refs = {}
     for i in range(len(table)):
         row = table.slice(i, 1)
-        rid = f"{row['speaker_id'][0].as_py()}-{row['chapter_id'][0].as_py()}-{row['id'][0].as_py()}"
-        refs[rid] = row["text"][0].as_py()
+        sid = str(row["speaker_id"][0].as_py())
+        cid = str(row["chapter_id"][0].as_py())
+        utterance_id = str(row["id"][0].as_py())
+        text = row["text"][0].as_py()
+        refs[utterance_id] = text
+        refs[f"{sid}-{cid}-{utterance_id}"] = text
     return refs
 
 
