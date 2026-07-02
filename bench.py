@@ -92,7 +92,7 @@ def read_wav_chunks(path: str):
     if len(fmt) < 16:
         raise ValueError("truncated fmt chunk")
 
-    container_audio_format, channels, sample_rate, _, block_align, bits_per_sample = struct.unpack("<HHIIHH", fmt[:16])
+    container_audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample = struct.unpack("<HHIIHH", fmt[:16])
     audio_format = container_audio_format
     if container_audio_format == WAVE_FORMAT_EXTENSIBLE:
         if len(fmt) < 40:
@@ -124,6 +124,11 @@ def read_wav_chunks(path: str):
     if block_align != expected_block_align:
         raise ValueError(
             f"invalid block alignment: expected {expected_block_align}, got {block_align}"
+        )
+    expected_byte_rate = sample_rate * expected_block_align
+    if byte_rate != expected_byte_rate:
+        raise ValueError(
+            f"invalid byte rate: expected {expected_byte_rate}, got {byte_rate}"
         )
     if expected_block_align <= 0:
         raise ValueError("invalid WAV channel count or sample width")
