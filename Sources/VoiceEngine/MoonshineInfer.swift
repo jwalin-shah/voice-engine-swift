@@ -201,6 +201,11 @@ public final class MoonshineEngine: @unchecked Sendable {
         ])).featureValue(for: encOutName)!.multiArrayValue!
 
         let S_enc = encOut.shape[1].intValue
+        guard S_enc <= arch.S_ENC_MAX else {
+            throw MoonshineError.inferenceFailed(
+                "Encoder output has \(S_enc) frames, exceeding decoder limit \(arch.S_ENC_MAX)"
+            )
+        }
         let hidden = mlToFloats(encOut)
         // Debug: log first few hidden state values
 
