@@ -294,7 +294,7 @@ class MoonshineBench:
         cross_k = np.stack(cross_k_list).astype(np.float32)
         cross_v = np.stack(cross_v_list).astype(np.float32)
 
-        # Pad cross_k/v to S_ENC_MAX=500 (CoreML state shape requirement),
+        # Pad cross_k/v to S_ENC_MAX=500 (CoreML decoder input shape),
         # and build a cross_mask that exposes only the actual S_enc frames.
         S_ENC_MAX = 500
         pad_amt = S_ENC_MAX - S_enc
@@ -308,9 +308,6 @@ class MoonshineBench:
         # 4. Decoder loop.
         t0 = time.perf_counter()
         state = self.decoder.make_state()
-        state.write_state("cross_k", cross_k)
-        state.write_state("cross_v", cross_v)
-        state.write_state("cross_mask", cross_mask)
 
         attn_mask = np.full((1, 1, 1, S_MAX), -1e4, dtype=np.float32)
         attn_mask[..., 0] = 0.0
@@ -331,6 +328,9 @@ class MoonshineBench:
                     "cos": cos,
                     "sin": sin,
                     "write_onehot": onehot,
+                    "cross_k": cross_k,
+                    "cross_v": cross_v,
+                    "cross_mask": cross_mask,
                 },
                 state=state,
             )
