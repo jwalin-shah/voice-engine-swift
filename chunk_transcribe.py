@@ -70,8 +70,10 @@ def transcribe_long(bench, path, overlap_s=2.0):
     # Pad to full chunk
     if n_samples < CHUNK_SAMPLES:
         samples = np.pad(samples, (0, CHUNK_SAMPLES - n_samples)).astype(np.float32, copy=False)
+        t0 = time.perf_counter()
         text, _ = bench.transcribe(samples)
-        return text.strip(), 0
+        decode_ms = (time.perf_counter() - t0) * 1000
+        return text.strip(), decode_ms
 
     full_text = ""
     prev_text = ""
