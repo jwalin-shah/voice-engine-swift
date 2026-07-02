@@ -1,0 +1,26 @@
+#!/bin/bash
+# Build VoiceEngine release, deploy to .app bundle, and hot-restart.
+# This preserves the .app bundle identity so macOS Accessibility permission
+# stays valid across builds.
+set -euo pipefail
+
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+APP="/Applications/VoiceEngine.app"
+BUNDLE_BIN="$APP/Contents/MacOS/voice"
+LAUNCHD_LABEL="com.jwalinshah.voice-engine"
+
+cd "$DIR"
+
+echo "==> Building release..."
+swift build -c release --package-path "$DIR"
+
+echo "==> Deploying to $APP..."
+cp -f "$DIR/.build/release/voice" "$BUNDLE_BIN"
+
+echo "==> Restarting via launchd..."
+launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null || {
+    echo "    (not running, starting...)"
+    launchctl bootstrap gui/$(id -u) /Library/LaunchAgents/$LAUNCHD_LABEL.plist 2>/dev/null || true
+}
+
+echo "==> Done. Caps Lock to dictate."

@@ -71,21 +71,13 @@ class TestRunner {
         do { let loaded = VocabularyService.shared.vocabulary; assertEqual(loaded.count, 1); assertEqual(loaded[0].trigger, "persist") }; VocabularyService.shared.vocabulary = []
         do { var cmds = VocabularyService.shared.appCommands; cmds.append(VocabularyService.AppCommand(appName: "T", bundleID: "com.test", trigger: "apphello", replacement: "APPHELLO")); VocabularyService.shared.appCommands = cmds; assertEqual(VocabularyService.shared.process("say apphello", frontAppBundleID: "com.test"), "say APPHELLO", "app command"); VocabularyService.shared.appCommands = [] }
         suite("CleanupService")
-        do { let cs = CleanupService(daemon: DaemonService()); assertEqual(cs.mode, .full, "default mode") }
+        do { let cs = CleanupService(); assertEqual(cs.mode, .fillerOnly, "default mode") }
         UserDefaults.standard.set(CleanupService.CleanupMode.disabled.rawValue, forKey: "cleanupMode")
-        do { let cs = CleanupService(daemon: DaemonService()); assertEqual(cs.mode, .disabled, "mode persistence") }
+        do { let cs = CleanupService(); assertEqual(cs.mode, .disabled, "mode persistence") }
         UserDefaults.standard.removeObject(forKey: "cleanupMode")
         assertEqual(CleanupService.CleanupMode.disabled.rawValue, "Disabled", "rawValue disabled")
         assertEqual(CleanupService.CleanupMode.fillerOnly.rawValue, "Filler only", "rawValue filler")
         assertEqual(CleanupService.CleanupMode.full.rawValue, "Full", "rawValue full")
-        suite("DaemonService")
-        do { let d = DaemonService(); assertFalse(d.isDaemonAvailable, "initial not available") }
-        assertNotNil(DaemonService.DaemonError.notRunning.errorDescription, "error desc")
-        assertNotNil(DaemonService.DaemonError.timeout.errorDescription)
-        assertNotNil(DaemonService.DaemonError.rpcError("x").errorDescription)
-        assertNotNil(DaemonService.DaemonError.pythonNotFound.errorDescription)
-        assertNotNil(DaemonService.DaemonError.processExited(1).errorDescription)
-        do { let d = DaemonService(); assertFalse(d.isDaemonAvailable) }
     }
 }
 

@@ -16,7 +16,6 @@ public final class AppController {
     private let statusItem: NSStatusItem
     private let capture = AudioCapture()
     private var hotkey: HotkeyMonitor?
-    private let hud = HUDWindow()
     private nonisolated let engine = MoonshineEngine()
     private let vad = VAD()
     private let skipTranscriptionIfSilent = true
@@ -24,8 +23,7 @@ public final class AppController {
     public private(set) var state: State = .idle { didSet { updateMenu() } }
     private var engineLoaded = false
     private let settingsWindow = SettingsWindow()
-    private let daemonService = DaemonService()
-    private lazy var cleanupService = CleanupService(daemon: daemonService)
+    private let cleanupService = CleanupService()
 
     private static let logDir: URL = {
         let dir = FileManager.default.homeDirectoryForCurrentUser
@@ -117,18 +115,6 @@ public final class AppController {
     private func beginRecording() {
         guard state == .idle else { return }
         state = .recording
-        let eng = engine
-        capture.partialCallback = { [weak hud] audioData in
-            let rawFloats = audioData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-            guard rawFloats.count >= 16000 else { return }
-            Task.detached(priority: .background) {
-                let text = try? eng.transcribeLong(rawAudio: rawFloats)
-                let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                if !trimmed.isEmpty {
-                    await MainActor.run { hud?.show(trimmed) }
-                }
-            }
-        }
         do {
             try capture.start()
         } catch {
@@ -246,15 +232,6 @@ public final class AppController {
             } catch {
                 NSLog(" Engine load failed: \(error.localizedDescription)")
                 presentError("Engine load failed: \(error.localizedDescription)")
-            }
-        }
-        Task {
-            do {
-                try await daemonService.launch()
-                let avail = await cleanupService.checkAvailability()
-                NSLog("[VoiceEngine] Cleanup daemon ready, model_loaded=\(avail)")
-            } catch {
-                NSLog("[VoiceEngine] Cleanup daemon unavailable: \(error.localizedDescription)")
             }
         }
     }

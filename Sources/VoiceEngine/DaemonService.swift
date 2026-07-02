@@ -121,18 +121,18 @@ public actor DaemonService {
         if let bundlePath = Bundle.main.path(forResource: "daemon", ofType: "py", inDirectory: "lfm_daemon") {
             return bundlePath
         }
-        // Development path
-        let devPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("projects/machine-scratch/voice-engine-swift/lfm_daemon/daemon.py")
-        if FileManager.default.fileExists(atPath: devPath.path) {
-            return devPath.path
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        // Development paths (most likely first)
+        let devPaths = [
+            home.appendingPathComponent("projects/voice-engine-swift/lfm_daemon/daemon.py").path,
+            home.appendingPathComponent("projects/machine-scratch/voice-engine-swift/lfm_daemon/daemon.py").path,
+        ]
+        for p in devPaths {
+            if FileManager.default.fileExists(atPath: p) { return p }
         }
-        // Another common dev path
         let cwd = FileManager.default.currentDirectoryPath
         let cwdPath = (cwd as NSString).appendingPathComponent("lfm_daemon/daemon.py")
-        if FileManager.default.fileExists(atPath: cwdPath) {
-            return cwdPath
-        }
+        if FileManager.default.fileExists(atPath: cwdPath) { return cwdPath }
         return ""
     }
 
