@@ -257,10 +257,23 @@ class MoonshineBench:
 
 def main():
     import argparse
+
+    def positive_int(value: str) -> int:
+        parsed = int(value)
+        if parsed < 1:
+            raise argparse.ArgumentTypeError("must be >= 1")
+        return parsed
+
+    def positive_float(value: str) -> float:
+        parsed = float(value)
+        if parsed <= 0:
+            raise argparse.ArgumentTypeError("must be > 0")
+        return parsed
+
     ap = argparse.ArgumentParser()
     ap.add_argument("audio", nargs="?")
-    ap.add_argument("--iterations", type=int, default=3)
-    ap.add_argument("--duration", type=float, default=3.0,
+    ap.add_argument("--iterations", type=positive_int, default=3)
+    ap.add_argument("--duration", type=positive_float, default=3.0,
                     help="Synthetic audio duration in seconds")
     ap.add_argument("--json", action="store_true", help="Output as JSON")
     args = ap.parse_args()
