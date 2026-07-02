@@ -79,7 +79,10 @@ def run_bench(wavs, refs):
 
 def run_one(wav, refs):
     stem = wav.stem
-    ref = refs.get(stem, "?")
+    ref = refs.get(stem)
+    if ref is None:
+        print(f"  ! {stem}: no LibriSpeech reference found; skipping")
+        return None
 
     result = subprocess.run(
         [sys.executable, str(BENCH), str(wav), "--iterations", "1", "--json"],
