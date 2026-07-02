@@ -76,10 +76,15 @@ def transcribe_long(bench, path, overlap_s=2.0):
     full_text = ""
     prev_text = ""
     total_decode_ms = 0
+    previous_end = 0
 
     for start in range(0, n_samples, step):
         end = min(start + CHUNK_SAMPLES, n_samples)
-        if end - start < SR: break
+        new_audio_samples = end - previous_end
+        if start > 0 and new_audio_samples < SR:
+            break
+        if end - start < SR:
+            break
 
         chunk = samples[start:end]
         if len(chunk) < CHUNK_SAMPLES:
@@ -110,6 +115,7 @@ def transcribe_long(bench, path, overlap_s=2.0):
               f"{decode_ms:5.0f}ms \"{clip}...\"")
 
         prev_text = text
+        previous_end = end
 
     return full_text.strip(), total_decode_ms
 
