@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Microphone access (AVAudioEngine, CoreAudio) -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- Automation / Apple Events (NSAppleScript fallback in Paster.swift) -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+    <!-- Camera (disabled by default; toggle true if needed) -->
+    <key>com.apple.security.device.camera</key>
+    <false/>
+    <!-- File access (disabled by default; toggle true if needed) -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <false/>
+</dict>
+</plist>

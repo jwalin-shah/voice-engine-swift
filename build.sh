@@ -10,6 +10,43 @@ info()  { echo -e "${GREEN}[+]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 err()   { echo -e "${RED}[x]${NC} $*"; }
 
+ENTITLEMENTS="$DIR/VoiceEngine.entitlements"
+
+# Sign the binary with entitlements.
+# Uses an Apple Developer cert if available, otherwise falls back to ad-hoc.
+codesign_binary() {
+    local bin="$1"
+    local ident="${2:-com.voiceengine.app}"
+    if [ ! -f "$bin" ]; then
+        err "Binary not found: $bin"
+        return 1
+    fi
+
+    # Look for a non-Apple, non-ad-hoc signing identity (Developer cert).
+    local cert
+    cert=$(security find-identity -v -p basic 2>/dev/null \
+        | grep -E '^[[:space:]]*[0-9]+\)' \
+        | grep -v "REPLACEMENT" \
+        | head -1 \
+        | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*[A-F0-9]+[[:space:]]*"(.*)"/\1/')
+
+    if [ -n "$cert" ] && [ "$cert" != "-" ]; then
+        info "Code-signing with identity: $cert"
+        codesign --force --sign "$cert" \
+            --entitlements "$ENTITLEMENTS" \
+            --options runtime \
+            -i "$ident" \
+            "$bin"
+    else
+        warn "No Apple Developer signing cert found — signing ad-hoc (permissions will not persist across rebuilds)"
+        codesign --force --sign - \
+            --entitlements "$ENTITLEMENTS" \
+            --options runtime \
+            -i "$ident" \
+            "$bin"
+    fi
+}
+
 cmd_setup() {
     info "Exporting CoreML models (Python)…"
     command -v python3 >/dev/null || { err "python3 required"; exit 1; }
@@ -28,6 +65,7 @@ cmd_build() {
     swift build -c release --package-path "$DIR"
     local bin="$DIR/.build/release/voice"
     if [ -f "$bin" ]; then
+        codesign_binary "$bin" "com.voiceengine.app"
         info "Binary ready: $bin"
     fi
 }
@@ -99,6 +137,7 @@ cmd_debug() {
     swift build -c debug --package-path "$DIR" 2>&1
     local bin="$DIR/.build/debug/voice"
     if [ -f "$bin" ]; then
+        codesign_binary "$bin" "com.voiceengine.app"
         info "Debug binary ready: $bin"
     fi
 }
