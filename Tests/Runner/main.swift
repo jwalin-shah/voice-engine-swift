@@ -78,6 +78,12 @@ class TestRunner {
         assertEqual(CleanupService.CleanupMode.disabled.rawValue, "Disabled", "rawValue disabled")
         assertEqual(CleanupService.CleanupMode.fillerOnly.rawValue, "Filler only", "rawValue filler")
         assertEqual(CleanupService.CleanupMode.full.rawValue, "Full", "rawValue full")
+        suite("MoonshineEngine.chunkRanges")
+        assertEqual(MoonshineEngine.chunkRanges(sampleCount: 0).count, 0, "empty audio has no chunks")
+        assertEqual(MoonshineEngine.chunkRanges(sampleCount: 160000), [0..<160000], "exact encoder window is one chunk")
+        assertEqual(MoonshineEngine.chunkRanges(sampleCount: 168000), [0..<160000], "sub-second tail after overlap is skipped")
+        assertEqual(MoonshineEngine.chunkRanges(sampleCount: 176000), [0..<160000, 128000..<176000], "one-second tail after overlap is kept")
+        assertEqual(MoonshineEngine.chunkRanges(sampleCount: 288000), [0..<160000, 128000..<288000], "eighteen seconds uses two chunks")
     }
 }
 

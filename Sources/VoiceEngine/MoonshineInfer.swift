@@ -227,15 +227,13 @@ public final class MoonshineEngine: @unchecked Sendable {
             return try transcribe(rawAudio: rawAudio)
         }
 
-        let step = C.chunkSamples - C.overlapSamples
         var fullText = ""
         var prevText = ""
 
-        var chunkStart = 0
-        while chunkStart < rawAudio.count {
-            let chunkEnd = min(chunkStart + C.chunkSamples, rawAudio.count)
+        for range in Self.chunkRanges(sampleCount: rawAudio.count) {
+            let chunkStart = range.lowerBound
+            let chunkEnd = range.upperBound
             let chunk = Array(rawAudio[chunkStart..<chunkEnd])
-            if chunk.count < C.minChunkSamples { break }
 
             let text = try transcribe(rawAudio: chunk)
 
@@ -248,10 +246,32 @@ public final class MoonshineEngine: @unchecked Sendable {
             }
 
             prevText = text
-            chunkStart += step
         }
 
         return fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    public static func chunkRanges(sampleCount: Int) -> [Range<Int>] {
+        guard sampleCount > 0 else { return [] }
+        guard sampleCount > C.chunkSamples else { return [0..<sampleCount] }
+
+        let step = C.chunkSamples - C.overlapSamples
+        var ranges: [Range<Int>] = []
+        var chunkStart = 0
+        var previousEnd = 0
+
+        while chunkStart < sampleCount {
+            let chunkEnd = min(chunkStart + C.chunkSamples, sampleCount)
+            let newAudioSamples = chunkEnd - previousEnd
+            if chunkStart > 0 && newAudioSamples < C.minChunkSamples { break }
+            if chunkEnd - chunkStart < C.minChunkSamples { break }
+
+            ranges.append(chunkStart..<chunkEnd)
+            previousEnd = chunkEnd
+            chunkStart += step
+        }
+
+        return ranges
     }
 
     // MARK: - Overlap dedup (sentence-level)
