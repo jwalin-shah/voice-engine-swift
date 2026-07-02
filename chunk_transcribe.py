@@ -10,6 +10,7 @@ import numpy as np
 SR = 16000
 CHUNK_SAMPLES = 10 * SR
 OVERLAP_SAMPLES = 2 * SR  # 2s overlap
+MIN_NEW_AUDIO_SAMPLES = SR  # Keep at least 1s of new audio per chunk.
 MODEL_DIR = Path.home() / ".cache" / "moonshine-coreml" / "tiny-streaming"
 REPO_ROOT = Path(__file__).resolve().parent
 
@@ -60,8 +61,9 @@ def dedup_overlap(prev_text, new_text):
 
 def transcribe_long(bench, path, overlap_s=2.0):
     """Transcribe using loaded model, chunk by chunk."""
-    if not math.isfinite(overlap_s) or overlap_s < 0 or overlap_s >= CHUNK_SAMPLES / SR:
-        raise ValueError(f"overlap_s must be finite, >= 0, and < {CHUNK_SAMPLES / SR:.1f}s")
+    max_overlap_s = (CHUNK_SAMPLES - MIN_NEW_AUDIO_SAMPLES) / SR
+    if not math.isfinite(overlap_s) or overlap_s < 0 or overlap_s > max_overlap_s:
+        raise ValueError(f"overlap_s must be finite, >= 0, and <= {max_overlap_s:.1f}s")
 
     samples, dur = load_audio(path)
     n_samples = len(samples)
@@ -133,8 +135,9 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     path = Path(args.audio)
-    if not math.isfinite(args.overlap) or args.overlap < 0 or args.overlap >= CHUNK_SAMPLES / SR:
-        print(f"ERROR: --overlap must be finite, >= 0, and < {CHUNK_SAMPLES / SR:.1f}s", file=sys.stderr)
+    max_overlap_s = (CHUNK_SAMPLES - MIN_NEW_AUDIO_SAMPLES) / SR
+    if not math.isfinite(args.overlap) or args.overlap < 0 or args.overlap > max_overlap_s:
+        print(f"ERROR: --overlap must be finite, >= 0, and <= {max_overlap_s:.1f}s", file=sys.stderr)
         sys.exit(2)
     try:
         _, dur = inspect_wav(path)
