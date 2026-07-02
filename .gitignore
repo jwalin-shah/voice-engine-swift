@@ -19,8 +19,12 @@ DerivedData/
 mlx_model/
 mlx_model_8b/
 *.safetensors
+*.safetensors.index.json
 *.mlmodelc/
 # CocoIndex Code (ccc)
 /.cocoindex_code/
 .tldr/
 .tldrignore
+
+# gnhf tooling
+.gnhf/

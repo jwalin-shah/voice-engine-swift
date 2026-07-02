@@ -339,14 +339,25 @@ def copy_tokenizer():
     """Copy the sentencepiece model from the HF cache."""
     print("→ Copying tokenizer…")
     from transformers import AutoTokenizer
+    import tempfile
     tok = AutoTokenizer.from_pretrained(MODEL_NAME)
-    spm_path = tok.vocab_file  # sentencepiece model path
+    dst = OUTPUT_DIR / "sentencepiece.bpe.model"
+    # PreTrainedTokenizerFast may lack vocab_file in newer transformers;
+    # fall back to save_pretrained + discover the .model file.
+    spm_path = getattr(tok, "vocab_file", None)
     if spm_path and os.path.exists(spm_path):
-        dst = OUTPUT_DIR / "sentencepiece.bpe.model"
         shutil.copy(spm_path, dst)
         print(f"   Saved → {dst}")
-    else:
-        print("   WARNING: sentencepiece model not found in tokenizer")
+        return
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tok.save_pretrained(tmpdir)
+        for fname in os.listdir(tmpdir):
+            if fname.endswith(".model"):
+                spm_path = os.path.join(tmpdir, fname)
+                shutil.copy(spm_path, dst)
+                print(f"   Saved → {dst}")
+                return
+    print("   WARNING: sentencepiece model not found in tokenizer")
 
 
 # ── Main ────────────────────────────────────────────────────────────────────

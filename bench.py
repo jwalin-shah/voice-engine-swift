@@ -354,6 +354,11 @@ class MoonshineBench:
         t0 = time.perf_counter()
         state = self.decoder.make_state()
 
+        # Set cross-attention state tensors via state API (coremltools 9).
+        state.write_state("cross_k", cross_k)
+        state.write_state("cross_v", cross_v)
+        state.write_state("cross_mask", cross_mask)
+
         attn_mask = np.full((1, 1, 1, S_MAX), -1e4, dtype=np.float32)
         attn_mask[..., 0] = 0.0
         onehot = np.zeros((1, 1, S_MAX, 1), dtype=np.float32)
@@ -373,9 +378,6 @@ class MoonshineBench:
                     "cos": cos,
                     "sin": sin,
                     "write_onehot": onehot,
-                    "cross_k": cross_k,
-                    "cross_v": cross_v,
-                    "cross_mask": cross_mask,
                 },
                 state=state,
             )
