@@ -22,6 +22,20 @@ def audio_duration_s(wav_path):
     _, duration = inspect_audio_wav(str(wav_path))
     return duration
 
+def recording_duration_s(recording):
+    """Prefer sidecar duration, falling back to the actual WAV duration."""
+    try:
+        duration = float(recording.get("duration_secs", 0) or 0)
+    except (TypeError, ValueError):
+        duration = 0.0
+    if duration > 0:
+        return duration
+
+    try:
+        return audio_duration_s(recording["wav"])
+    except (FileNotFoundError, ValueError):
+        return duration
+
 def find_recordings():
     """Find all WAV files and their paired JSON sidecars."""
     recordings = []
@@ -47,7 +61,7 @@ def export_dataset(out_dir):
         if not text:
             continue  # skip unlabeled recordings
 
-        dur = r.get("duration_secs", 0)
+        dur = recording_duration_s(r)
         app = r.get("app", "")
 
         entry = {"audio": r["wav"], "text": text, "duration_secs": dur, "app": app}
@@ -138,7 +152,7 @@ if __name__ == "__main__":
         print(f"Recordings: {len(recs)} total, {labeled} labeled")
         for r in recs[-20:]:
             text = r.get("text", "")[:60]
-            dur = r.get("duration_secs", 0)
+            dur = recording_duration_s(r)
             flag = "✓" if text else "✗"
             print(f"  {flag} {dur:4.1f}s  {os.path.basename(r['wav']):<35s} {text}")
 
