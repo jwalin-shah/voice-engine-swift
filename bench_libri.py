@@ -84,10 +84,14 @@ def run_one(wav, refs):
         print(f"  ! {stem}: no LibriSpeech reference found; skipping")
         return None
 
-    result = subprocess.run(
-        [sys.executable, str(BENCH), str(wav), "--iterations", "1", "--json"],
-        capture_output=True, text=True, timeout=300
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, str(BENCH), str(wav), "--iterations", "1", "--json"],
+            capture_output=True, text=True, timeout=300
+        )
+    except subprocess.TimeoutExpired:
+        print(f"  ! {stem}: timed out after 300s; skipping")
+        return None
     # Show any errors
     if result.returncode != 0:
         stderr_short = result.stderr.strip()[:200] if result.stderr else "none"
