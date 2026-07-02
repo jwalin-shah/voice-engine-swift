@@ -98,7 +98,7 @@ artifacts in `~/.cache/moonshine-coreml/tiny-streaming/`:
 | `bench.py` | Loads `encoder.mlpackage`, `decoder_stateful.mlpackage`, and `cross_kv_weights.npz`, then reports per-stage timings for one audio window. |
 | `chunk_transcribe.py` | Runs long WAV files through `bench.py`'s model wrapper using the same 10 second chunking and overlap-dedup strategy. It validates mono 16 kHz 16-bit PCM WAV input before model loading. |
 | `bench_full.py` | Wraps `bench.py --json` and adds wall-clock and child-process peak RSS measurements. |
-| `bench_libri.py` | Runs `bench.py` over `/tmp/librispeech/test-clean`, compares transcripts to LibriSpeech references, and summarizes timings by duration bucket. |
+| `bench_libri.py` | Runs `bench.py` over LibriSpeech test-clean WAVs, compares transcripts to LibriSpeech references, and summarizes timings by duration bucket. Defaults to `/tmp/librispeech/test-clean`; use `--wav-dir` and `--limit` for targeted runs. |
 | `export_dataset.py` | Exports labeled VoiceEngine recordings from `~/Library/Logs/voice-engine/audio` to JSONL and can compare stored transcripts against Whisper. |
 
 `chunk_transcribe.py` does not run VAD itself; use the Swift app path when
