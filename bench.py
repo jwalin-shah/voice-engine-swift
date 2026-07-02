@@ -16,7 +16,7 @@ Usage:
   python3 bench.py --iterations 10    # Average over N runs
 """
 
-import time, sys, os, json, struct, wave, tempfile
+import math, time, sys, os, json, struct, wave, tempfile
 import numpy as np
 from pathlib import Path
 
@@ -266,8 +266,11 @@ def main():
 
     def positive_float(value: str) -> float:
         parsed = float(value)
-        if parsed <= 0:
-            raise argparse.ArgumentTypeError("must be > 0")
+        min_duration = 1 / SAMPLE_RATE
+        if not math.isfinite(parsed):
+            raise argparse.ArgumentTypeError("must be finite")
+        if parsed < min_duration:
+            raise argparse.ArgumentTypeError(f"must be >= {min_duration:.8f} seconds")
         return parsed
 
     ap = argparse.ArgumentParser()

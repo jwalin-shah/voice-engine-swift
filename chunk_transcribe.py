@@ -3,7 +3,7 @@
 Efficient chunked transcriber: loads models ONCE, then chunks through audio.
 Overlap boundaries are handled by trimming the overlapping portion of the text.
 """
-import argparse, json, struct, sys, time, wave
+import argparse, json, math, struct, sys, time, wave
 from pathlib import Path
 
 SR = 16000
@@ -156,8 +156,8 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     path = Path(args.audio)
-    if args.overlap < 0 or args.overlap >= CHUNK_SAMPLES / SR:
-        print(f"ERROR: --overlap must be >= 0 and < {CHUNK_SAMPLES / SR:.1f}s", file=sys.stderr)
+    if not math.isfinite(args.overlap) or args.overlap < 0 or args.overlap >= CHUNK_SAMPLES / SR:
+        print(f"ERROR: --overlap must be finite, >= 0, and < {CHUNK_SAMPLES / SR:.1f}s", file=sys.stderr)
         sys.exit(2)
     try:
         _, dur = inspect_wav(path)
