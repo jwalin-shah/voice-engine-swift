@@ -121,6 +121,8 @@ def read_wav_chunks(path: str):
         raise ValueError(f"unsupported non-byte-aligned sample width: {bits_per_sample} bits")
     sample_width = bits_per_sample // 8
     expected_block_align = channels * sample_width
+    if expected_block_align <= 0:
+        raise ValueError("invalid WAV channel count or sample width")
     if block_align != expected_block_align:
         raise ValueError(
             f"invalid block alignment: expected {expected_block_align}, got {block_align}"
@@ -130,8 +132,6 @@ def read_wav_chunks(path: str):
         raise ValueError(
             f"invalid byte rate: expected {expected_byte_rate}, got {byte_rate}"
         )
-    if expected_block_align <= 0:
-        raise ValueError("invalid WAV channel count or sample width")
     if len(data) % expected_block_align != 0:
         raise ValueError(
             f"truncated sample data: {len(data)} bytes is not divisible by frame size {expected_block_align}"
