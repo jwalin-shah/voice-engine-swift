@@ -88,6 +88,24 @@ def export_dataset(out_dir):
 
 def compare_whisper():
     """Run Whisper on all recordings and compare WER with Moonshine."""
+    recs = [r for r in find_recordings() if recording_text(r)]
+    if not recs:
+        print("No labeled recordings found. Dictate something first!")
+        return
+
+    valid_recs = []
+    for r in recs:
+        try:
+            r["_duration_s"] = audio_duration_s(r["wav"])
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"Skipping unsupported recording {os.path.basename(r['wav'])}: {exc}")
+            continue
+        valid_recs.append(r)
+
+    if not valid_recs:
+        print("No supported labeled WAV recordings found.")
+        return
+
     try:
         import whisper
     except ImportError:
@@ -95,11 +113,7 @@ def compare_whisper():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "openai-whisper", "-q"])
         import whisper
 
-    recs = [r for r in find_recordings() if recording_text(r)]
-    if not recs:
-        print("No labeled recordings found. Dictate something first!")
-        return
-
+    recs = valid_recs
     print(f"Comparing Whisper vs Moonshine on {len(recs)} recordings...\n")
 
     def wer(r, h):
@@ -125,7 +139,7 @@ def compare_whisper():
         wav_path = r["wav"]
         ref = recording_text(r)
 
-        dur = audio_duration_s(wav_path)
+        dur = r["_duration_s"]
 
         # Run Whisper
         result = model.transcribe(wav_path, language="en")
