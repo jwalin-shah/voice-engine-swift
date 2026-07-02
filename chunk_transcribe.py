@@ -3,7 +3,7 @@
 Efficient chunked transcriber: loads models ONCE, then chunks through audio.
 Overlap boundaries are handled by trimming the overlapping portion of the text.
 """
-import json, struct, sys, time, wave
+import argparse, json, struct, sys, time, wave
 from pathlib import Path
 
 SR = 16000
@@ -16,10 +16,37 @@ REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 from bench import MoonshineBench
 
+def inspect_wav(path):
+    """Validate WAV metadata and return (frame_count, duration_s)."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Audio file not found: {path}")
+    if not path.is_file():
+        raise ValueError(f"Audio path is not a file: {path}")
+
+    try:
+        with wave.open(str(path), "rb") as w:
+            channels = w.getnchannels()
+            sample_width = w.getsampwidth()
+            sample_rate = w.getframerate()
+            frames = w.getnframes()
+    except wave.Error as exc:
+        raise ValueError(f"Audio file is not a readable WAV: {path} ({exc})") from exc
+
+    if channels != 1:
+        raise ValueError(f"Expected mono WAV, got {channels} channels: {path}")
+    if sample_width != 2:
+        raise ValueError(f"Expected 16-bit PCM WAV, got {sample_width * 8}-bit samples: {path}")
+    if sample_rate != SR:
+        raise ValueError(f"Expected {SR} Hz WAV, got {sample_rate} Hz: {path}")
+    if frames <= 0:
+        raise ValueError(f"Audio file has no samples: {path}")
+
+    return frames, frames / SR
+
 def load_audio(path):
-    with wave.open(str(path)) as w:
-        assert w.getnchannels() == 1
-        assert w.getframerate() == SR
+    inspect_wav(path)
+    with wave.open(str(path), "rb") as w:
         n = w.getnframes()
         raw = w.readframes(n)
         samples = struct.unpack("<" + "h" * n, raw)
@@ -113,7 +140,22 @@ def transcribe_long(bench, path, overlap_s=2.0):
     return full_text.strip(), total_decode_ms
 
 if __name__ == "__main__":
-    path = sys.argv[1] if len(sys.argv) > 1 else "/tmp/libri_chained.wav"
+    ap = argparse.ArgumentParser(
+        description="Transcribe a 16 kHz mono 16-bit PCM WAV with the Moonshine CoreML chunking pipeline."
+    )
+    ap.add_argument("audio", nargs="?", default="/tmp/libri_chained.wav")
+    ap.add_argument("--overlap", type=float, default=2.0, help="Chunk overlap in seconds")
+    args = ap.parse_args()
+
+    path = Path(args.audio)
+    if args.overlap < 0 or args.overlap >= CHUNK_SAMPLES / SR:
+        print(f"ERROR: --overlap must be >= 0 and < {CHUNK_SAMPLES / SR:.1f}s", file=sys.stderr)
+        sys.exit(2)
+    try:
+        _, dur = inspect_wav(path)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     print("Loading model (one time)...")
     bench = MoonshineBench()
@@ -122,11 +164,9 @@ if __name__ == "__main__":
     bench.warmup()
 
     print(f"\nTranscribing {path}...")
-    text, ms = transcribe_long(bench, path, overlap_s=2.0)
+    text, ms = transcribe_long(bench, path, overlap_s=args.overlap)
 
     words = len(text.split())
-    with wave.open(path) as w:
-        dur = w.getnframes() / w.getframerate()
 
     print(f"\n{'='*60}")
     print(f"Duration: {dur:.0f}s | Decode: {ms:.0f}ms | RTF: {ms/1000/dur:.5f}")
