@@ -9,6 +9,7 @@ Usage:
   ! python3 bench_full.py --json                 # machine-readable
 """
 import json
+import math
 import subprocess
 import sys
 import time
@@ -51,8 +52,8 @@ def bench_timeout_s():
         timeout_s = float(raw) if raw else DEFAULT_TIMEOUT_S
     except ValueError as exc:
         raise ValueError(f"BENCH_FULL_TIMEOUT_SECONDS must be a number, got {raw!r}") from exc
-    if timeout_s <= 0:
-        raise ValueError("BENCH_FULL_TIMEOUT_SECONDS must be > 0")
+    if not math.isfinite(timeout_s) or timeout_s <= 0:
+        raise ValueError("BENCH_FULL_TIMEOUT_SECONDS must be finite and > 0")
     return timeout_s
 
 
