@@ -73,6 +73,38 @@ A mic icon appears in the menubar. Press **Caps Lock** to start recording, press
 
 Measures end-to-end: audio load → encoder → KV projection → decoder loop → token decode.
 
+## Moonshine CoreML Pipeline
+
+The production dictation path is a single Swift process:
+
+1. `AudioCapture` records microphone input and converts it to mono 16 kHz
+   `Float` samples.
+2. `AppController` runs `VAD` after recording stops. Silent captures are
+   filtered before inference.
+3. `MoonshineEngine.transcribeLong` splits audio into 10 second windows with a
+   2 second overlap. Short final windows below the minimum chunk size are
+   skipped.
+4. Each chunk runs through the CoreML Moonshine stack:
+   audio window → encoder on ANE → CPU K/V projection → stateful decoder on CPU
+   → SentencePiece token decode.
+5. Adjacent chunk text is deduplicated at sentence boundaries before `Paster`
+   injects the final transcript into the focused app.
+
+The root Python scripts are audit and benchmark helpers for the same model
+artifacts in `~/.cache/moonshine-coreml/tiny-streaming/`:
+
+| Script | Purpose |
+|---|---|
+| `bench.py` | Loads `encoder.mlpackage`, `decoder_stateful.mlpackage`, and `cross_kv_weights.npz`, then reports per-stage timings for one audio window. |
+| `chunk_transcribe.py` | Runs long WAV files through `bench.py`'s model wrapper using the same 10 second chunking and overlap-dedup strategy. It validates mono 16 kHz 16-bit PCM WAV input before model loading. |
+| `bench_full.py` | Wraps `bench.py --json` and adds wall-clock and child-process peak RSS measurements. |
+| `bench_libri.py` | Runs `bench.py` over `/tmp/librispeech/test-clean`, compares transcripts to LibriSpeech references, and summarizes timings by duration bucket. |
+| `export_dataset.py` | Exports labeled VoiceEngine recordings from `~/Library/Logs/voice-engine/audio` to JSONL and can compare stored transcripts against Whisper. |
+
+`chunk_transcribe.py` does not run VAD itself; use the Swift app path when
+validating VAD behavior. Full Python inference requires `./build.sh setup` to
+populate the CoreML model cache.
+
 ## Model details
 
 | Component | Hardware | Precision | Notes |
