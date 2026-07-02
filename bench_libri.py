@@ -6,6 +6,31 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent
 BENCH = REPO_ROOT / "bench.py"
 
+
+def normalize_words(text):
+    return "".join(ch.lower() if ch.isalnum() else " " for ch in text).split()
+
+
+def word_error_counts(reference, hypothesis):
+    """Return (edit_distance, reference_word_count) for WER aggregation."""
+    ref = normalize_words(reference)
+    hyp = normalize_words(hypothesis)
+    if not ref:
+        return (0 if not hyp else len(hyp)), len(ref)
+
+    prev = list(range(len(hyp) + 1))
+    for i, ref_word in enumerate(ref, start=1):
+        curr = [i] + [0] * len(hyp)
+        for j, hyp_word in enumerate(hyp, start=1):
+            cost = 0 if ref_word == hyp_word else 1
+            curr[j] = min(
+                prev[j] + 1,
+                curr[j - 1] + 1,
+                prev[j - 1] + cost,
+            )
+        prev = curr
+    return prev[-1], len(ref)
+
 def positive_int(value):
     parsed = int(value)
     if parsed < 1:
@@ -79,10 +104,11 @@ def run_one(wav, refs):
     total = sum(data.get(k, {}).get("mean_ms", 0)
                 for k in ["preprocess","encoder","kv_projection","decoder_loop","token_decode"])
 
-    # Simple WER: just check if hyp matches ref (case-insensitive)
-    ref_norm = ref.strip().lower()
-    hyp_norm = hyp.strip().lower()
-    match = "✓" if hyp_norm == ref_norm else "✗"
+    ref_norm = " ".join(normalize_words(ref))
+    hyp_norm = " ".join(normalize_words(hyp))
+    wer_errors, ref_words = word_error_counts(ref, hyp)
+    wer_pct = (100 * wer_errors / ref_words) if ref_words else (0.0 if not hyp_norm else 100.0)
+    match = "✓" if wer_errors == 0 else "✗"
 
     bucket = "0-2s" if dur <= 2 else "2-5s" if dur <= 5 else "5-10s" if dur <= 10 else "10-15s" if dur <= 15 else "15s+"
 
@@ -93,7 +119,7 @@ def run_one(wav, refs):
 
     print(f"  {match} {dur:5.1f}s  [{bucket:6s}] "
           f"enc={enc_ms:4.1f} kv={kv_ms:4.1f} dec={dec_ms:5.1f} ({steps:3d} steps) "
-          f"total={total:5.1f}ms")
+          f"total={total:5.1f}ms wer={wer_pct:5.1f}%")
     if match == "✗":
         print(f"       ref: \"{ref_norm[:60]}\"")
         print(f"       hyp: \"{hyp_norm[:60]}\"")
@@ -101,7 +127,9 @@ def run_one(wav, refs):
     return {"file": stem, "dur": dur, "bucket": bucket,
             "enc_ms": enc_ms, "kv_ms": kv_ms, "dec_ms": dec_ms,
             "steps": steps, "total_ms": total,
-            "match": match == "✓", "ref": ref_norm, "hyp": hyp_norm}
+            "match": match == "✓", "wer_errors": wer_errors,
+            "ref_words": ref_words, "wer_pct": wer_pct,
+            "ref": ref_norm, "hyp": hyp_norm}
 
 
 def print_summary(results):
@@ -112,13 +140,21 @@ def print_summary(results):
         sys.exit(1)
 
     correct = sum(1 for r in results if r["match"])
-    print(f"Accuracy: {correct}/{len(results)} ({100*correct/len(results):.1f}%)")
+    total_errors = sum(r["wer_errors"] for r in results)
+    total_ref_words = sum(r["ref_words"] for r in results)
+    corpus_wer = (100 * total_errors / total_ref_words) if total_ref_words else 0.0
+    print(f"Exact transcripts: {correct}/{len(results)} ({100*correct/len(results):.1f}%)")
+    print(f"Corpus WER: {corpus_wer:.1f}%")
     print(f"Mean total: {sum(r['total_ms'] for r in results)/len(results):.1f} ms")
 
     buckets = {}
     for r in results:
         b = r["bucket"]
-        if b not in buckets: buckets[b] = {"n":0, "total":0, "enc":0, "kv":0, "dec":0, "steps":0, "correct":0}
+        if b not in buckets:
+            buckets[b] = {
+                "n": 0, "total": 0, "enc": 0, "kv": 0, "dec": 0, "steps": 0,
+                "correct": 0, "wer_errors": 0, "ref_words": 0,
+            }
         buckets[b]["n"] += 1
         buckets[b]["total"] += r["total_ms"]
         buckets[b]["enc"] += r["enc_ms"]
@@ -126,18 +162,21 @@ def print_summary(results):
         buckets[b]["dec"] += r["dec_ms"]
         buckets[b]["steps"] += r["steps"]
         buckets[b]["correct"] += 1 if r["match"] else 0
+        buckets[b]["wer_errors"] += r["wer_errors"]
+        buckets[b]["ref_words"] += r["ref_words"]
 
     print(f"\n{'Bucket':<10} {'n':>3} {'Enc':>6} {'KV':>6} {'Dec':>8} {'Steps':>5} {'Total':>6} {'WER':>6}")
     print("-" * 50)
     for b in sorted(buckets.keys()):
         v = buckets[b]
         n = v["n"]
-        wer = (1 - v["correct"]/n)*100 if n else 0
+        wer = (100 * v["wer_errors"] / v["ref_words"]) if v["ref_words"] else 0.0
         print(f"{b:<10} {n:>3} {v['enc']/n:5.1f}ms {v['kv']/n:5.1f}ms {v['dec']/n:5.1f}ms {v['steps']/n:4.0f} {v['total']/n:5.1f}ms {wer:5.1f}%")
 
     with open("/tmp/libri_bench_results.json", "w") as f:
         json.dump({"results": results, "summary": {
             "correct": correct, "total": len(results),
+            "corpus_wer_pct": corpus_wer,
             "mean_total_ms": sum(r['total_ms'] for r in results)/len(results)
         }}, f, indent=2)
     print(f"\nResults saved to /tmp/libri_bench_results.json")
