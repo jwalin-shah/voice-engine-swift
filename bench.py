@@ -22,6 +22,8 @@ from pathlib import Path
 
 SAMPLE_RATE = 16000
 MODEL_DIR = Path.home() / ".cache" / "moonshine-coreml" / "tiny-streaming"
+WAVE_FORMAT_EXTENSIBLE = 0xFFFE
+WAV_SUBFORMAT_GUID_TAIL = b"\x00\x00\x00\x00\x10\x00\x80\x00\x00\xaa\x00\x38\x9b\x71"
 
 
 def read_wav_chunks(path: str):
@@ -70,7 +72,19 @@ def read_wav_chunks(path: str):
     if len(fmt) < 16:
         raise ValueError("truncated fmt chunk")
 
-    audio_format, channels, sample_rate, _, block_align, bits_per_sample = struct.unpack("<HHIIHH", fmt[:16])
+    container_audio_format, channels, sample_rate, _, block_align, bits_per_sample = struct.unpack("<HHIIHH", fmt[:16])
+    audio_format = container_audio_format
+    if container_audio_format == WAVE_FORMAT_EXTENSIBLE:
+        if len(fmt) < 40:
+            raise ValueError("truncated WAVE_FORMAT_EXTENSIBLE fmt chunk")
+        extension_size = struct.unpack("<H", fmt[16:18])[0]
+        if extension_size < 22:
+            raise ValueError(f"invalid WAVE_FORMAT_EXTENSIBLE extension size: {extension_size}")
+        subformat = fmt[24:40]
+        if subformat[2:] != WAV_SUBFORMAT_GUID_TAIL:
+            raise ValueError("unsupported WAVE_FORMAT_EXTENSIBLE subformat GUID")
+        audio_format = struct.unpack("<H", subformat[:2])[0]
+
     if bits_per_sample % 8 != 0:
         raise ValueError(f"unsupported non-byte-aligned sample width: {bits_per_sample} bits")
     sample_width = bits_per_sample // 8
@@ -88,6 +102,7 @@ def read_wav_chunks(path: str):
     frames = len(data) // expected_block_align
     return {
         "audio_format": audio_format,
+        "container_audio_format": container_audio_format,
         "channels": channels,
         "sample_width": sample_width,
         "sample_rate": sample_rate,
