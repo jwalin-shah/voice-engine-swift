@@ -207,10 +207,8 @@ def load_audio_wav(path: str) -> np.ndarray:
     inspect_audio_wav(path)
     info = read_wav_chunks(path)
     raw = info["raw"]
-    n = info["frames"]
     if info["audio_format"] == 1 and info["sample_width"] == 2:
-        samples = struct.unpack("<" + "h" * n, raw)
-        return np.array(samples, dtype=np.float32) / 32768.0
+        return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
     if info["audio_format"] == 3 and info["sample_width"] == 4:
         samples = np.frombuffer(raw, dtype="<f4").astype(np.float32)
         if not np.all(np.isfinite(samples)):
