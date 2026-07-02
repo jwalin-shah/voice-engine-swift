@@ -153,8 +153,8 @@ def wav_audio_format(path: str):
     return read_wav_chunks(path)["audio_format"]
 
 
-def inspect_audio_wav(path: str) -> tuple[int, float]:
-    """Validate WAV metadata and return (frame_count, duration_s)."""
+def validated_audio_wav_info(path: str):
+    """Validate WAV metadata and return parsed WAV info."""
     wav_path = Path(path)
     if not wav_path.exists():
         raise FileNotFoundError(f"Audio file not found: {wav_path}")
@@ -199,13 +199,19 @@ def inspect_audio_wav(path: str) -> tuple[int, float]:
         if not np.all(np.isfinite(samples)):
             raise ValueError(f"Audio file contains non-finite float samples: {wav_path}")
 
+    return info
+
+
+def inspect_audio_wav(path: str) -> tuple[int, float]:
+    """Validate WAV metadata and return (frame_count, duration_s)."""
+    info = validated_audio_wav_info(path)
+    frames = info["frames"]
     return frames, frames / SAMPLE_RATE
 
 
 def load_audio_wav(path: str) -> np.ndarray:
     """Load mono WAV as float32 [-1, 1]. Supports 16-bit PCM and 32-bit float."""
-    inspect_audio_wav(path)
-    info = read_wav_chunks(path)
+    info = validated_audio_wav_info(path)
     raw = info["raw"]
     if info["audio_format"] == 1 and info["sample_width"] == 2:
         return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
