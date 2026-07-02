@@ -11,6 +11,10 @@ N = 30
 # Collect all WAVs and their transcripts from filenames + parquet
 wavs = sorted(WAV_DIR.rglob("*.wav"))
 print(f"Found {len(wavs)} WAV files\n")
+if not wavs:
+    print(f"No LibriSpeech WAV files found in {WAV_DIR}")
+    print("Run fetch_librispeech.py first, or set up /tmp/librispeech/test-clean.")
+    sys.exit(1)
 
 # Load reference transcripts from parquet
 from huggingface_hub import hf_hub_download
@@ -83,6 +87,11 @@ for wav in wavs[:N]:
 
 # Summary
 print(f"\n{'='*60}")
+if not results:
+    print("No successful benchmark results were collected.")
+    print("Check the errors above; common causes are missing CoreML models or failed bench.py runs.")
+    sys.exit(1)
+
 correct = sum(1 for r in results if r["match"])
 print(f"Accuracy: {correct}/{len(results)} ({100*correct/len(results):.1f}%)")
 print(f"Mean total: {sum(r['total_ms'] for r in results)/len(results):.1f} ms")
@@ -90,10 +99,11 @@ print(f"Mean total: {sum(r['total_ms'] for r in results)/len(results):.1f} ms")
 buckets = {}
 for r in results:
     b = r["bucket"]
-    if b not in buckets: buckets[b] = {"n":0, "total":0, "enc":0, "dec":0, "steps":0, "correct":0}
+    if b not in buckets: buckets[b] = {"n":0, "total":0, "enc":0, "kv":0, "dec":0, "steps":0, "correct":0}
     buckets[b]["n"] += 1
     buckets[b]["total"] += r["total_ms"]
     buckets[b]["enc"] += r["enc_ms"]
+    buckets[b]["kv"] += r["kv_ms"]
     buckets[b]["dec"] += r["dec_ms"]
     buckets[b]["steps"] += r["steps"]
     buckets[b]["correct"] += 1 if r["match"] else 0
@@ -104,7 +114,7 @@ for b in sorted(buckets.keys()):
     v = buckets[b]
     n = v["n"]
     wer = (1 - v["correct"]/n)*100 if n else 0
-    print(f"{b:<10} {n:>3} {v['enc']/n:5.1f}ms {0:>5} {v['dec']/n:5.1f}ms {v['steps']/n:4.0f} {v['total']/n:5.1f}ms {wer:5.1f}%")
+    print(f"{b:<10} {n:>3} {v['enc']/n:5.1f}ms {v['kv']/n:5.1f}ms {v['dec']/n:5.1f}ms {v['steps']/n:4.0f} {v['total']/n:5.1f}ms {wer:5.1f}%")
 
 # Save results
 with open("/tmp/libri_bench_results.json", "w") as f:
