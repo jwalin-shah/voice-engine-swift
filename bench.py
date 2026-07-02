@@ -35,21 +35,36 @@ def read_wav_chunks(path: str):
             riff_size_raw = f.read(4)
             if len(riff_size_raw) < 4:
                 raise ValueError("truncated RIFF header")
+            riff_size = struct.unpack("<I", riff_size_raw)[0]
+            if riff_size < 4:
+                raise ValueError(f"invalid RIFF size: {riff_size}")
+            file_size = f.seek(0, os.SEEK_END)
+            riff_end = 8 + riff_size
+            if riff_end > file_size:
+                raise ValueError(
+                    f"truncated RIFF data: header declares {riff_size} bytes, "
+                    f"file has {file_size - 8} bytes"
+                )
+            f.seek(8)
             if f.read(4) != b"WAVE":
                 raise ValueError("missing WAVE header")
 
             fmt = None
             data = None
-            while True:
+            while f.tell() < riff_end:
                 chunk_id = f.read(4)
-                if not chunk_id:
-                    break
                 if len(chunk_id) < 4:
                     raise ValueError("truncated chunk header")
                 chunk_size_raw = f.read(4)
                 if len(chunk_size_raw) < 4:
                     raise ValueError("truncated chunk size")
                 chunk_size = struct.unpack("<I", chunk_size_raw)[0]
+                chunk_end = f.tell() + chunk_size
+                if chunk_end > riff_end:
+                    chunk_name = chunk_id.decode("ascii", errors="replace")
+                    raise ValueError(
+                        f"chunk {chunk_name} extends beyond declared RIFF data"
+                    )
                 chunk_data = f.read(chunk_size)
                 if len(chunk_data) < chunk_size:
                     raise ValueError(
@@ -61,6 +76,11 @@ def read_wav_chunks(path: str):
                 elif chunk_id == b"data":
                     data = chunk_data
                 if chunk_size % 2:
+                    if f.tell() >= riff_end:
+                        raise ValueError(
+                            f"missing pad byte after odd-sized chunk "
+                            f"{chunk_id.decode('ascii', errors='replace')}"
+                        )
                     f.read(1)
     except OSError as exc:
         raise ValueError(str(exc)) from exc
