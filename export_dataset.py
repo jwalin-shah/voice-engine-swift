@@ -9,11 +9,18 @@ Usage:
   python3 export_dataset.py --whisper                # Compare Whisper vs Moonshine WER
 """
 
-import json, os, sys, subprocess, wave, re, glob
+import json, os, sys, subprocess, re, glob
 from pathlib import Path
 
 AUDIO_DIR = Path.home() / "Library" / "Logs" / "voice-engine" / "audio"
 METRICS_FILE = Path.home() / "Library" / "Logs" / "voice-engine" / "metrics.jsonl"
+
+def audio_duration_s(wav_path):
+    """Return duration for supported VoiceEngine WAV archives."""
+    from bench import inspect_audio_wav
+
+    _, duration = inspect_audio_wav(str(wav_path))
+    return duration
 
 def find_recordings():
     """Find all WAV files and their paired JSON sidecars."""
@@ -99,9 +106,7 @@ def compare_whisper():
         wav_path = r["wav"]
         ref = r["text"]
 
-        # Get duration
-        with wave.open(wav_path) as w:
-            dur = w.getnframes() / w.getframerate()
+        dur = audio_duration_s(wav_path)
 
         # Run Whisper
         result = model.transcribe(wav_path, language="en")
