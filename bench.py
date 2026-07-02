@@ -316,6 +316,11 @@ class MoonshineBench:
         if hidden.ndim == 2:
             hidden = hidden[None]
         S_enc = hidden.shape[1]
+        S_ENC_MAX = 500
+        if S_enc > S_ENC_MAX:
+            raise ValueError(
+                f"Encoder output has {S_enc} frames, exceeding decoder limit {S_ENC_MAX}"
+            )
         times["encoder"] = time.perf_counter() - t0
 
         # 3. Cross-KV projection.
@@ -337,7 +342,6 @@ class MoonshineBench:
 
         # Pad cross_k/v to S_ENC_MAX=500 (CoreML decoder input shape),
         # and build a cross_mask that exposes only the actual S_enc frames.
-        S_ENC_MAX = 500
         pad_amt = S_ENC_MAX - S_enc
         if pad_amt > 0:
             cross_k = np.pad(cross_k, ((0,0),(0,0),(0,0),(0,pad_amt),(0,0))).astype(np.float32)
