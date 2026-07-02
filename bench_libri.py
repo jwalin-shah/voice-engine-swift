@@ -38,11 +38,20 @@ def positive_int(value):
     return parsed
 
 
+def existing_directory(value):
+    path = Path(value)
+    if not path.exists():
+        raise argparse.ArgumentTypeError(f"directory does not exist: {path}")
+    if not path.is_dir():
+        raise argparse.ArgumentTypeError(f"not a directory: {path}")
+    return path
+
+
 def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--wav-dir",
-        type=Path,
+        type=existing_directory,
         default=Path("/tmp/librispeech/test-clean"),
         help="Directory containing LibriSpeech test-clean WAV files",
     )
