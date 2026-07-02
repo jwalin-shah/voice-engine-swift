@@ -36,6 +36,11 @@ def recording_duration_s(recording):
     except (FileNotFoundError, ValueError):
         return duration
 
+def recording_text(recording):
+    """Return a valid transcript string from recording metadata."""
+    text = recording.get("text", "")
+    return text.strip() if isinstance(text, str) else ""
+
 def find_recordings():
     """Find all WAV files and their paired JSON sidecars."""
     recordings = []
@@ -57,7 +62,7 @@ def export_dataset(out_dir):
 
     dataset = []
     for r in recs:
-        text = r.get("text", "").strip()
+        text = recording_text(r)
         if not text:
             continue  # skip unlabeled recordings
 
@@ -90,7 +95,7 @@ def compare_whisper():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "openai-whisper", "-q"])
         import whisper
 
-    recs = [r for r in find_recordings() if r.get("text", "").strip()]
+    recs = [r for r in find_recordings() if recording_text(r)]
     if not recs:
         print("No labeled recordings found. Dictate something first!")
         return
@@ -118,7 +123,7 @@ def compare_whisper():
     moon_wers, whisp_wers = [], []
     for r in recs:
         wav_path = r["wav"]
-        ref = r["text"]
+        ref = recording_text(r)
 
         dur = audio_duration_s(wav_path)
 
@@ -148,10 +153,10 @@ if __name__ == "__main__":
 
     if args.list or not any([args.export, args.whisper]):
         recs = find_recordings()
-        labeled = sum(1 for r in recs if r.get("text", "").strip())
+        labeled = sum(1 for r in recs if recording_text(r))
         print(f"Recordings: {len(recs)} total, {labeled} labeled")
         for r in recs[-20:]:
-            text = r.get("text", "")[:60]
+            text = recording_text(r)[:60]
             dur = recording_duration_s(r)
             flag = "✓" if text else "✗"
             print(f"  {flag} {dur:4.1f}s  {os.path.basename(r['wav']):<35s} {text}")
