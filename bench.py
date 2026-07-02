@@ -21,6 +21,9 @@ import numpy as np
 from pathlib import Path
 
 SAMPLE_RATE = 16000
+ENC_WINDOW = 10 * SAMPLE_RATE
+OVERLAP_SAMPLES = 2 * SAMPLE_RATE
+MIN_NEW_AUDIO_SAMPLES = SAMPLE_RATE
 MODEL_DIR = Path.home() / ".cache" / "moonshine-coreml" / "tiny-streaming"
 WAVE_FORMAT_EXTENSIBLE = 0xFFFE
 WAV_SUBFORMAT_GUID_TAIL = b"\x00\x00\x00\x00\x10\x00\x80\x00\x00\xaa\x00\x38\x9b\x71"
@@ -234,6 +237,43 @@ def generate_test_audio(duration_s: float = 3.0) -> np.ndarray:
     return audio
 
 
+def dedup_overlap(prev_text: str, new_text: str) -> str:
+    """Drop repeated leading text caused by overlapping audio chunks."""
+    import re
+
+    prev_sents = re.split(r'(?<=[.!?])\s+', prev_text.strip())
+    new_sents = re.split(r'(?<=[.!?])\s+', new_text.strip())
+    if not prev_sents or not new_sents:
+        return new_text
+
+    def norm(sentence: str) -> str:
+        return sentence.strip().lower().rstrip(".,!?;")
+
+    tail = [norm(s) for s in (prev_sents[-2:] if len(prev_sents) >= 2 else prev_sents[-1:])]
+    for skip in range(min(len(new_sents), 4)):
+        head = norm(new_sents[skip])
+        for prev in tail:
+            if not head or not prev:
+                continue
+            if (
+                len(prev) > 8
+                and len(head) > 8
+                and (
+                    head.startswith(prev)
+                    or prev.startswith(head)
+                    or prev[:15] == head[:15]
+                    or prev in head
+                    or head in prev
+                )
+            ):
+                return " ".join(new_sents[skip + 1:]).strip()
+        if len(new_sents[skip].split()) <= 4:
+            continue
+        break
+
+    return new_text
+
+
 class MoonshineBench:
     def __init__(self):
         self.encoder = None
@@ -297,17 +337,18 @@ class MoonshineBench:
 
         times = {}
 
-        # 1. Pad/clip to encoder window.
+        # 1. Pad to encoder window. Call transcribe_chunked for longer audio.
         t0 = time.perf_counter()
         audio = audio.astype(np.float32)
         if audio.ndim == 1:
             audio = audio[None, :]
         n = audio.shape[1]
-        ENC_WINDOW = 160000  # 10s
         if n < ENC_WINDOW:
             audio = np.pad(audio, ((0, 0), (0, ENC_WINDOW - n)))
         elif n > ENC_WINDOW:
-            audio = audio[:, :ENC_WINDOW]
+            raise ValueError(
+                f"Audio has {n} samples; use transcribe_chunked for inputs longer than {ENC_WINDOW}"
+            )
         times["preprocess"] = time.perf_counter() - t0
 
         # 2. Encoder forward.
@@ -406,10 +447,97 @@ class MoonshineBench:
 
         return text, times
 
+    def transcribe_chunked(self, audio: np.ndarray, verbose: bool = False):
+        """Transcribe arbitrary-length audio using 10s chunks with 2s overlap."""
+        audio = np.asarray(audio, dtype=np.float32)
+        if audio.ndim == 2:
+            if audio.shape[0] != 1:
+                raise ValueError(f"Expected mono audio with shape (1, n), got {audio.shape}")
+            audio = audio[0]
+        elif audio.ndim != 1:
+            raise ValueError(f"Expected 1D mono audio, got shape {audio.shape}")
+
+        if len(audio) <= ENC_WINDOW:
+            return self.transcribe(audio)
+
+        step = ENC_WINDOW - OVERLAP_SAMPLES
+        full_text = ""
+        prev_text = ""
+        previous_end = 0
+        chunk_times = []
+        chunk_index = 0
+
+        for start in range(0, len(audio), step):
+            end = min(start + ENC_WINDOW, len(audio))
+            new_audio_samples = end - previous_end
+            if start > 0 and new_audio_samples < MIN_NEW_AUDIO_SAMPLES:
+                break
+            if end - start < MIN_NEW_AUDIO_SAMPLES:
+                break
+
+            chunk = audio[start:end]
+            text, times = self.transcribe(chunk)
+            chunk_times.append(times)
+
+            text = text.strip()
+            new_part = dedup_overlap(prev_text, text) if prev_text else text
+            if new_part:
+                full_text = f"{full_text} {new_part}".strip()
+
+            if verbose:
+                t_s = start / SAMPLE_RATE
+                t_e = end / SAMPLE_RATE
+                clip = text[:50].replace("\n", " ")
+                print(f"  chunk {chunk_index:2d} ({t_s:.0f}s-{t_e:.0f}s): \"{clip}...\"")
+
+            prev_text = text
+            previous_end = end
+            chunk_index += 1
+
+        if not chunk_times:
+            return "", {
+                "preprocess": 0.0,
+                "encoder": 0.0,
+                "kv_projection": 0.0,
+                "decoder_loop": 0.0,
+                "token_decode": 0.0,
+                "decoder_steps": 0,
+                "decoder_per_token_mean": 0.0,
+                "decoder_per_token_max": 0.0,
+                "decoder_per_token_min": 0.0,
+                "chunks": 0,
+            }
+
+        times = {}
+        for key in ["preprocess", "encoder", "kv_projection", "decoder_loop", "token_decode"]:
+            times[key] = sum(t.get(key, 0.0) for t in chunk_times)
+
+        total_steps = sum(int(t.get("decoder_steps", 0)) for t in chunk_times)
+        times["decoder_steps"] = total_steps
+        if total_steps:
+            weighted_sum = sum(
+                t.get("decoder_per_token_mean", 0.0) * int(t.get("decoder_steps", 0))
+                for t in chunk_times
+            )
+            times["decoder_per_token_mean"] = weighted_sum / total_steps
+            times["decoder_per_token_max"] = max(t.get("decoder_per_token_max", 0.0) for t in chunk_times)
+            times["decoder_per_token_min"] = min(
+                t.get("decoder_per_token_min", 0.0)
+                for t in chunk_times
+                if int(t.get("decoder_steps", 0)) > 0
+            )
+        else:
+            times["decoder_per_token_mean"] = 0.0
+            times["decoder_per_token_max"] = 0.0
+            times["decoder_per_token_min"] = 0.0
+        times["chunks"] = len(chunk_times)
+
+        return full_text.strip(), times
+
     def warmup(self):
         """Pre-warm the ANE with a dummy inference."""
         print("  Warming up ANE…")
-        audio = np.zeros((1, 160000), dtype=np.float32)
+        audio = np.zeros((1, ENC_WINDOW), dtype=np.float32)
         _ = self.encoder.predict({self.enc_in: audio})
 
 
@@ -468,18 +596,18 @@ def main():
 
     all_times = []
     for i in range(args.iterations):
-        text, times = bench.transcribe(audio.copy())
+        text, times = bench.transcribe_chunked(audio.copy(), verbose=not args.json)
         all_times.append(times)
 
     # Aggregate.
     keys = ["preprocess", "encoder", "kv_projection", "decoder_loop",
             "token_decode", "decoder_steps", "decoder_per_token_mean",
-            "decoder_per_token_max", "decoder_per_token_min"]
+            "decoder_per_token_max", "decoder_per_token_min", "chunks"]
 
     agg = {}
     for k in keys:
         vals = [t.get(k, 0) for t in all_times]
-        if k in ("decoder_steps",):
+        if k in ("decoder_steps", "chunks"):
             agg[k] = int(np.mean(vals))
         else:
             agg[k] = {
