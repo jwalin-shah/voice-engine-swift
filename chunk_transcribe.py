@@ -30,8 +30,9 @@ def inspect_wav(path):
             sample_width = w.getsampwidth()
             sample_rate = w.getframerate()
             frames = w.getnframes()
-    except wave.Error as exc:
-        raise ValueError(f"Audio file is not a readable WAV: {path} ({exc})") from exc
+    except (wave.Error, EOFError) as exc:
+        reason = str(exc) or exc.__class__.__name__
+        raise ValueError(f"Audio file is not a readable WAV: {path} ({reason})") from exc
 
     if channels != 1:
         raise ValueError(f"Expected mono WAV, got {channels} channels: {path}")

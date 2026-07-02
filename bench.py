@@ -24,11 +24,40 @@ SAMPLE_RATE = 16000
 MODEL_DIR = Path.home() / ".cache" / "moonshine-coreml" / "tiny-streaming"
 
 
+def inspect_audio_wav(path: str) -> tuple[int, float]:
+    """Validate WAV metadata and return (frame_count, duration_s)."""
+    wav_path = Path(path)
+    if not wav_path.exists():
+        raise FileNotFoundError(f"Audio file not found: {wav_path}")
+    if not wav_path.is_file():
+        raise ValueError(f"Audio path is not a file: {wav_path}")
+
+    try:
+        with wave.open(str(wav_path), "rb") as w:
+            channels = w.getnchannels()
+            sample_width = w.getsampwidth()
+            sample_rate = w.getframerate()
+            frames = w.getnframes()
+    except (wave.Error, EOFError) as exc:
+        reason = str(exc) or exc.__class__.__name__
+        raise ValueError(f"Audio file is not a readable WAV: {wav_path} ({reason})") from exc
+
+    if channels != 1:
+        raise ValueError(f"Expected mono WAV, got {channels} channels: {wav_path}")
+    if sample_width != 2:
+        raise ValueError(f"Expected 16-bit PCM WAV, got {sample_width * 8}-bit samples: {wav_path}")
+    if sample_rate != SAMPLE_RATE:
+        raise ValueError(f"Expected {SAMPLE_RATE} Hz WAV, got {sample_rate} Hz: {wav_path}")
+    if frames <= 0:
+        raise ValueError(f"Audio file has no samples: {wav_path}")
+
+    return frames, frames / SAMPLE_RATE
+
+
 def load_audio_wav(path: str) -> np.ndarray:
     """Load 16-bit PCM mono WAV as float32 [-1, 1]."""
+    inspect_audio_wav(path)
     with wave.open(path, "rb") as w:
-        assert w.getnchannels() == 1, "mono only"
-        assert w.getframerate() == SAMPLE_RATE, f"16kHz only, got {w.getframerate()}"
         n = w.getnframes()
         raw = w.readframes(n)
         samples = struct.unpack("<" + "h" * n, raw)
@@ -228,6 +257,13 @@ def main():
                     help="Synthetic audio duration in seconds")
     ap.add_argument("--json", action="store_true", help="Output as JSON")
     args = ap.parse_args()
+
+    if args.audio:
+        try:
+            inspect_audio_wav(args.audio)
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(2)
 
     bench = MoonshineBench()
     if not bench.load():
