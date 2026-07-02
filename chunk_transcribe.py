@@ -5,6 +5,7 @@ Overlap boundaries are handled by trimming the overlapping portion of the text.
 """
 import argparse, json, math, sys, time
 from pathlib import Path
+import numpy as np
 
 SR = 16000
 CHUNK_SAMPLES = 10 * SR
@@ -22,7 +23,7 @@ def inspect_wav(path):
 
 def load_audio(path):
     samples = load_audio_wav(str(path))
-    return samples.tolist(), len(samples) / SR
+    return samples, len(samples) / SR
 
 def dedup_overlap(prev_text, new_text):
     """Sentence-level dedup: drop sentences from new_text that already appeared."""
@@ -59,21 +60,22 @@ def dedup_overlap(prev_text, new_text):
 
 def transcribe_long(bench, path, overlap_s=2.0):
     """Transcribe using loaded model, chunk by chunk."""
+    if not math.isfinite(overlap_s) or overlap_s < 0 or overlap_s >= CHUNK_SAMPLES / SR:
+        raise ValueError(f"overlap_s must be finite, >= 0, and < {CHUNK_SAMPLES / SR:.1f}s")
+
     samples, dur = load_audio(path)
     n_samples = len(samples)
     step = CHUNK_SAMPLES - int(overlap_s * SR)
 
     # Pad to full chunk
     if n_samples < CHUNK_SAMPLES:
-        samples = samples + [0.0] * (CHUNK_SAMPLES - n_samples)
-        import numpy as np
-        text, _ = bench.transcribe(np.array(samples, dtype=np.float32))
+        samples = np.pad(samples, (0, CHUNK_SAMPLES - n_samples)).astype(np.float32, copy=False)
+        text, _ = bench.transcribe(samples)
         return text.strip(), 0
 
     full_text = ""
     prev_text = ""
     total_decode_ms = 0
-    import numpy as np
 
     for start in range(0, n_samples, step):
         end = min(start + CHUNK_SAMPLES, n_samples)
@@ -81,10 +83,10 @@ def transcribe_long(bench, path, overlap_s=2.0):
 
         chunk = samples[start:end]
         if len(chunk) < CHUNK_SAMPLES:
-            chunk = chunk + [0.0] * (CHUNK_SAMPLES - len(chunk))
+            chunk = np.pad(chunk, (0, CHUNK_SAMPLES - len(chunk)))
 
         t0 = time.perf_counter()
-        audio_np = np.array(chunk, dtype=np.float32)
+        audio_np = np.asarray(chunk, dtype=np.float32)
         text, times = bench.transcribe(audio_np)
         decode_ms = (time.perf_counter() - t0) * 1000
         total_decode_ms += decode_ms
