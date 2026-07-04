@@ -28,3 +28,9 @@ mlx_model_8b/
 
 # gnhf tooling
 .gnhf/
+
+# Build output
+build
+
+# Treehouse
+.treehouse/
