@@ -106,31 +106,15 @@ public final class AudioCapture {
 
     // MARK: - Capture
 
-    /// Begin capturing. Throws if the engine could not start.
-    public func start() throws {
-        guard !isRecording else { return }
-
-        engine = AVAudioEngine()
+    /// Pre-warm the audio engine at app launch so start() is instant.
+    /// Installs the tap and calls engine.prepare() but does NOT start recording.
+    public func warmUp() {
+        guard !isWarmed else { return }
         switchToBuiltInMic()
-
         let input = engine.inputNode
-        accumulator.removeAll(keepingCapacity: true)
-        lastPartialSampleCount = 0
-
-        // Voice processing (beamforming) is DISABLED because the ASR model was trained on
-        // raw single-mic audio. Voice processing applies DSP that changes the frequency
-        // response, which the model doesn't handle well. Fan noise is already in the
-        // training data. VAD handles accidental triggers instead.
         try? input.setVoiceProcessingEnabled(false)
-
         let inputFormat = input.outputFormat(forBus: 0)
-        sampleRate = 16000
-
-        // Create the resampler from the hardware format to 16 kHz mono float32.
         converter = AVAudioConverter(from: inputFormat, to: outputFormat)
-
-        // Request the smallest buffer size the hardware supports.
-        // 64 frames at 48 kHz = 1.3 ms per callback.
         var bufferFrameSize = UInt32(64)
         var prop = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyBufferFrameSize,
@@ -138,31 +122,40 @@ public final class AudioCapture {
             mElement: kAudioObjectPropertyElementMain)
         AudioObjectSetPropertyData(
             AudioObjectID(engine.outputNode.auAudioUnit.deviceID),
-            &prop, 0, nil,
-            UInt32(MemoryLayout<UInt32>.size), &bufferFrameSize)
-
+            &prop, 0, nil, UInt32(MemoryLayout<UInt32>.size), &bufferFrameSize)
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 64, format: inputFormat) { [weak self] buffer, _ in
-            guard let self else { return }
+            guard let self, self.isRecording else { return }
             self.queue.async { self.append(buffer: buffer) }
         }
-
         engine.prepare()
+        isWarmed = true
+        NSLog("[AudioCapture] warmed up")
+    }
+    private var isWarmed = false
+
+    /// Begin capturing. Throws if the engine could not start.
+    public func start() throws {
+        guard !isRecording else { return }
+        if !isWarmed { warmUp() }
+        switchToBuiltInMic()
+        accumulator.removeAll(keepingCapacity: true)
+        lastPartialSampleCount = 0
+        sampleRate = 16000
         do {
             try engine.start()
             isRecording = true
         } catch {
-            input.removeTap(onBus: 0)
             throw error
         }
     }
 
     public func stop() {
         guard isRecording else { return }
-        engine.inputNode.removeTap(onBus: 0)
+        // Stop the engine but keep it warmed (tap stays installed, engine stays prepared).
+        // Next start() call will be instant — no hardware re-init needed.
         engine.stop()
         isRecording = false
-        converter = nil
         restoreDefaultMic()
         partialCallback = nil
     }

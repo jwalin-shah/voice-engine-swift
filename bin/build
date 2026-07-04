@@ -1,13 +1,11 @@
 #!/bin/bash
-# Build VoiceEngine release, deploy to .app bundle, and hot-restart.
-# This preserves the .app bundle identity so macOS Accessibility permission
-# stays valid across builds.
+# Build VoiceEngine release and install the binary to ~/local/bin/voice-engine.
+# This is the simple path: no .app bundle, no Accessibility permission needed.
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP="/Applications/VoiceEngine.app"
-BUNDLE_BIN="$APP/Contents/MacOS/voice"
-LAUNCHD_LABEL="com.jwalinshah.voice-engine"
+BIN_DIR="$HOME/local/bin"
+INSTALL_BIN="$BIN_DIR/voice-engine"
 ENTITLEMENTS="$DIR/VoiceEngine.entitlements"
 
 cd "$DIR"
@@ -15,41 +13,20 @@ cd "$DIR"
 echo "==> Building release..."
 swift build -c release --package-path "$DIR"
 
-echo "==> Deploying to $APP..."
-cp -f "$DIR/.build/release/voice" "$BUNDLE_BIN"
+echo "==> Installing to $INSTALL_BIN..."
+mkdir -p "$BIN_DIR"
+cp -f "$DIR/.build/release/voice-engine" "$INSTALL_BIN"
 
-echo "==> Code-signing with entitlements..."
-if [ -f "$ENTITLEMENTS" ]; then
-    # Look for a non-Apple, non-ad-hoc signing identity (Developer cert).
-    cert=$(security find-identity -v -p basic 2>/dev/null \
-        | grep -E '^[[:space:]]*[0-9]+\)' \
-        | grep -v "REPLACEMENT" \
-        | head -1 \
-        | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]*[A-F0-9]+[[:space:]]*"(.*)"/\1/')
+echo "==> Code-signing (ad-hoc)..."
+codesign --force --sign - \
+    --entitlements "$ENTITLEMENTS" \
+    --options runtime \
+    "$INSTALL_BIN" 2>/dev/null || true
 
-    if [ -n "$cert" ] && [ "$cert" != "-" ]; then
-        echo "    Signing with identity: $cert"
-        codesign --force --sign "$cert" \
-            --entitlements "$ENTITLEMENTS" \
-            --options runtime \
-            -i "com.voiceengine.app" \
-            "$BUNDLE_BIN"
-    else
-        echo "    No Developer cert found — signing ad-hoc"
-        codesign --force --sign - \
-            --entitlements "$ENTITLEMENTS" \
-            --options runtime \
-            -i "com.voiceengine.app" \
-            "$BUNDLE_BIN"
-    fi
-else
-    echo "    WARNING: $ENTITLEMENTS not found — skipping signing"
-fi
-
-echo "==> Restarting via launchd..."
-launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null || {
-    echo "    (not running, starting...)"
-    launchctl bootstrap gui/$(id -u) /Library/LaunchAgents/$LAUNCHD_LABEL.plist 2>/dev/null || true
-}
-
-echo "==> Done. Caps Lock to dictate."
+echo "==> Done."
+echo ""
+echo "Start it with:"
+echo "  ./bin/run"
+echo ""
+echo "Or manually:"
+echo "  nohup ~/local/bin/voice-engine > /dev/null 2>&1 &"

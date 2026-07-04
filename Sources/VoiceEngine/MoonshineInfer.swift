@@ -2,6 +2,27 @@ import Accelerate
 import CoreML
 import Foundation
 
+private func dbg(_ msg: String) {
+    let line = "\(Date().timeIntervalSince1970) \(msg)\n"
+    if let data = line.data(using: .utf8),
+       let handle = FileHandle(forWritingAtPath: "/tmp/ve_dbg.log") {
+        handle.seekToEndOfFile(); handle.write(data); handle.closeFile()
+    } else if let data = line.data(using: .utf8) {
+        try? data.write(to: URL(fileURLWithPath: "/tmp/ve_dbg.log"), options: .atomic)
+    }
+}
+
+/// Convert float32 array to float16 via vImage (GPU-accelerated).
+private func f32to16(_ src: MLMultiArray) -> MLMultiArray? {
+    let shape = src.shape.map { $0.intValue }
+    let count = src.count
+    guard let dst = try? MLMultiArray(shape: shape as [NSNumber], dataType: .float16) else { return nil }
+    var srcBuf = vImage_Buffer(data: src.dataPointer, height: 1, width: vImagePixelCount(count), rowBytes: count * 4)
+    var dstBuf = vImage_Buffer(data: dst.dataPointer, height: 1, width: vImagePixelCount(count), rowBytes: count * 2)
+    guard vImageConvert_PlanarFtoPlanar16F(&srcBuf, &dstBuf, 0) == kvImageNoError else { return nil }
+    return dst
+}
+
 // MARK: - Constants
 
 private enum C {
@@ -207,16 +228,25 @@ public final class MoonshineEngine: @unchecked Sendable {
             )
         }
         let hidden = mlToFloats(encOut)
-        // Debug: log first few hidden state values
-
+        let audioRMS = sqrt(rawAudio.map { $0*$0 }.reduce(0, +) / Float(rawAudio.count))
+        let hiddenSample = hidden.prefix(4).map { String(format: "%.4f", $0) }.joined(separator: ",")
+        NSLog("[MoonshineEngine] encoder: audioRMS=%.4f S_enc=%d hidden[0..3]=%@", audioRMS, S_enc, hiddenSample)
 
         // 3. Build cross-KV via Accelerate gemm.
         let weightsDir = modelDir.appendingPathComponent("weights")
         let (crossK, crossV, crossMask) = try buildCrossKV(
             hidden: hidden, S_enc: S_enc, arch: arch, weightsDir)
-
+        // raw write markers that bypass heap/libc buffering
+        dbg("SYNC-A after buildCrossKV")
+        let ckPtr = crossK.dataPointer.bindMemory(to: Float.self, capacity: 4)
+        dbg("SYNC-B after bindMemory")
+        let ckSample = (0..<4).map { String(format: "%.4f", ckPtr[$0]) }.joined(separator: ",")
+        dbg("SYNC-C after ckSample=\(ckSample)")
+        NSLog("[MoonshineEngine] crossK[0..3]=%@", ckSample)
+        dbg("SYNC-D after NSLog")
 
         // 4. Decoder loop.
+        dbg("SYNC-E BEFORE decodeLoop")
         return try decodeLoop(crossK: crossK, crossV: crossV, crossMask: crossMask,
                                S_enc: S_enc, arch: arch, decoder: decoder,
                                weightsDir: weightsDir)
@@ -317,6 +347,7 @@ public final class MoonshineEngine: @unchecked Sendable {
 
     private func buildCrossKV(hidden: [Float], S_enc: Int, arch: ArchConfig,
                                _ weightsDir: URL) throws -> (MLMultiArray, MLMultiArray, MLMultiArray) {
+        dbg("BCV-ENTER")
         guard let kWeights, let vWeights, let kBias, let vBias else {
             // Fallback: use file-based loading (shouldn't happen if load() was called)
             return try buildCrossKVFile(hidden: hidden, S_enc: S_enc, arch: arch, weightsDir: weightsDir)
@@ -369,6 +400,7 @@ public final class MoonshineEngine: @unchecked Sendable {
         }
 
         for s in 0..<S_ENC_MAX { mPtr[s] = s < S_enc ? 0.0 : -10000.0 }
+        dbg("BCV-DONE")
         return (crossK, crossV, crossMask)
     }
 
@@ -446,13 +478,39 @@ public final class MoonshineEngine: @unchecked Sendable {
                              crossMask: MLMultiArray, S_enc: Int,
                              arch: ArchConfig, decoder: MLModel,
                              weightsDir: URL) throws -> String {
+        dbg("ENTER decodeLoop")
         let S_MAX = arch.S_MAX
 
         guard let cosMLArrays, let sinMLArrays else {
             throw MoonshineError.notLoaded
         }
+        dbg("guard passed")
 
         let state = decoder.makeState()
+        dbg("state created")
+
+        // cross_k/v/mask are state variables, not model inputs — write to state once before the loop.
+        // IMPORTANT: model state arrays use float16, but crossK/crossV/crossMask are float32.
+        // Convert via vImage before writing, otherwise memcpy writes 2x the expected size → SIGSEGV.
+        guard let crossK16 = f32to16(crossK),
+              let crossV16 = f32to16(crossV),
+              let crossMask16 = f32to16(crossMask) else {
+            throw MoonshineError.inferenceFailed("float32→float16 conversion failed")
+        }
+        dbg("f32to16 complete — cross_k=\(crossK16.count) cross_v=\(crossV16.count) cross_mask=\(crossMask16.count)")
+
+        state.withMultiArray(for: "cross_k") { ml in
+            memcpy(ml.dataPointer, crossK16.dataPointer, ml.count * 2)
+        }
+        dbg("cross_k write complete")
+        state.withMultiArray(for: "cross_v") { ml in
+            memcpy(ml.dataPointer, crossV16.dataPointer, ml.count * 2)
+        }
+        dbg("cross_v write complete")
+        state.withMultiArray(for: "cross_mask") { ml in
+            memcpy(ml.dataPointer, crossMask16.dataPointer, ml.count * 2)
+        }
+        dbg("state writes complete")
 
         let BOS: Int32 = 1
         let EOS: Int32 = 2
@@ -490,9 +548,6 @@ public final class MoonshineEngine: @unchecked Sendable {
                 "cos": cosML,
                 "sin": sinML,
                 "write_onehot": onehot,
-                "cross_k": crossK,
-                "cross_v": crossV,
-                "cross_mask": crossMask,
             ])
 
             let pred = try decoder.prediction(from: input, using: state)
@@ -515,6 +570,7 @@ public final class MoonshineEngine: @unchecked Sendable {
 
         }
 
+        NSLog("[MoonshineEngine] decoded %d tokens: %@", tokenIDs.count, tokenIDs.prefix(10).map{"\($0)"}.joined(separator:","))
         return tokenizer?.decode(tokenIDs) ?? tokenIDs.map { "\($0)" }.joined(separator: " ")
     }
 
@@ -543,7 +599,9 @@ public final class MoonshineEngine: @unchecked Sendable {
                 guard id != 1, id != 2 else { continue }
                 if let piece = idToPiece[id] { result += piece }
             }
-            return result.replacingOccurrences(of: "  ", with: " ")
+            // SentencePiece word-boundary marker -> space, then collapse whitespace.
+            return result.replacingOccurrences(of: "\u{2581}", with: " ")
+                         .replacingOccurrences(of: " +", with: " ", options: .regularExpression)
                          .trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }

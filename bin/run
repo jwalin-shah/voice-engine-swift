@@ -1,0 +1,19 @@
+#!/bin/bash
+# Start VoiceEngine as a background process (nohup).
+set -euo pipefail
+
+BIN="$HOME/local/bin/voice-engine"
+
+if [ ! -f "$BIN" ]; then
+    echo "[x] $BIN not found. Run ./bin/build first."
+    exit 1
+fi
+
+# Kill any existing instance.
+pkill -x voice-engine 2>/dev/null || true
+sleep 0.3
+
+echo "[+] Starting VoiceEngine..."
+nohup "$BIN" > /dev/null 2>&1 &
+echo "[+] PID: $!"
+echo "[+] Trigger dictation from Karabiner (Right Shift)."

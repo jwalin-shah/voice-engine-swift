@@ -5,7 +5,7 @@ let package = Package(
     name: "VoiceEngine",
     platforms: [.macOS(.v15)],
     products: [
-        .executable(name: "voice", targets: ["voice"]),
+        .executable(name: "voice-engine", targets: ["voice"]),
         .executable(name: "voice-tests", targets: ["VoiceEngineTests"]),
     ],
     targets: [

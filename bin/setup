@@ -1,0 +1,17 @@
+#!/bin/bash
+# Export CoreML models (one-time setup).
+set -euo pipefail
+
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$DIR"
+
+echo "[+] Exporting CoreML models (Python)…"
+command -v python3 >/dev/null || { echo "[x] python3 required"; exit 1; }
+
+pip install -q coremltools transformers moonshine-onnx torch sentencepiece numpy 2>/dev/null || true
+
+python3 "$DIR/Scripts/export_models.py" "$@"
+python3 "$DIR/Scripts/export_decoder.py" "$@"
+
+echo "[+] Models in ~/.cache/moonshine-coreml/tiny-streaming/"
+echo "[+] Run './bin/build' to deploy and start VoiceEngine."

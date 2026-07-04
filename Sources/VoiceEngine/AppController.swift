@@ -15,7 +15,7 @@ public final class AppController {
 
     private let statusItem: NSStatusItem
     private let capture = AudioCapture()
-    private var hotkey: HotkeyMonitor?
+    // HotkeyMonitor (Caps Lock CGEvent tap) removed — hotkey handled via Karabiner → SIGUSR1
     private nonisolated let engine = MoonshineEngine()
     private let vad = VAD()
     private let skipTranscriptionIfSilent = true
@@ -24,6 +24,9 @@ public final class AppController {
     private var engineLoaded = false
     private let settingsWindow = SettingsWindow()
     private let cleanupService = CleanupService()
+    private var recordingTimer: Timer?
+    private var signalSource: DispatchSourceSignal?
+    private nonisolated static let maxRecordingSeconds: TimeInterval = 60
 
     private static let logDir: URL = {
         let dir = FileManager.default.homeDirectoryForCurrentUser
@@ -45,8 +48,21 @@ public final class AppController {
             button.imagePosition = .imageLeft
         }
         updateMenu()
-        installHotkey()
+        installSignalToggle()
+        capture.warmUp()
         preloadEngine()
+    }
+
+    private func installSignalToggle() {
+        // Allow Karabiner (or any external tool) to toggle recording by sending SIGUSR1.
+        signal(SIGUSR1, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
+        source.setEventHandler { [weak self] in
+            NSLog("[VoiceEngine] SIGUSR1 received")
+            self?.handleHotkey()
+        }
+        source.resume()
+        signalSource = source  // retain so it isn't deallocated
     }
 
     private func updateMenu() {
@@ -81,7 +97,7 @@ public final class AppController {
         switch state {
         case .idle:
             return engineLoaded
-                ? "VoiceEngine Press Caps Lock to dictate"
+                ? "VoiceEngine Right Shift to dictate"
                 : "VoiceEngine Loading models..."
         case .recording: return "VoiceEngine Recording..."
         case .transcribing: return "VoiceEngine Transcribing..."
@@ -96,36 +112,43 @@ public final class AppController {
     @objc private func openSettings() { settingsWindow.show() }
     @objc private func quit() { NSApp.terminate(nil) }
 
-    private func installHotkey() {
-        let monitor = HotkeyMonitor { [weak self] in self?.handleHotkey() }
-        do {
-            try monitor.start()
-            hotkey = monitor
-        } catch {
-            presentError(error.localizedDescription)
-        }
-    }
-
     private func handleHotkey() {
+        Foundation.NSLog("[AppController] handleHotkey called, state=\(state)")
         if state == .transcribing { return }
         if state == .recording { finishRecording() }
         else { beginRecording() }
     }
 
     private func beginRecording() {
+        Foundation.NSLog("[AppController] beginRecording")
         guard state == .idle else { return }
         state = .recording
+        recordingTimer?.invalidate()
+        let timeout = Self.maxRecordingSeconds
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                NSLog("[VoiceEngine] Recording timeout after \(timeout)s, stopping")
+                self?.finishRecording()
+            }
+        }
         do {
             try capture.start()
+            Foundation.NSLog("[AppController] capture.start succeeded")
         } catch {
+            recordingTimer?.invalidate()
+            recordingTimer = nil
             state = .idle
             capture.partialCallback = nil
+            Foundation.NSLog("[AppController] capture.start failed: \(error.localizedDescription)")
             presentError("Audio start failed: \(error.localizedDescription)")
         }
     }
 
     private func finishRecording() {
+        Foundation.NSLog("[AppController] finishRecording")
         guard state == .recording else { return }
+        recordingTimer?.invalidate()
+        recordingTimer = nil
         capture.partialCallback = nil
         capture.stop()
         guard let buffer = capture.takeBuffer() else { state = .idle; return }

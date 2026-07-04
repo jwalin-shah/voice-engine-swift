@@ -1,0 +1,9 @@
+#!/bin/bash
+# Clean build artifacts.
+set -euo pipefail
+
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$DIR"
+
+echo "[+] Cleaning…"
+rm -rf "$DIR/.build"

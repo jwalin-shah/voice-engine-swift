@@ -1,0 +1,29 @@
+{
+  "title": "VoiceEngine: Right Shift toggles dictation",
+  "rules": [
+    {
+      "description": "Right Shift: tap=toggle voice, hold=normal shift",
+      "manipulators": [
+        {
+          "type": "basic",
+          "from": {
+            "key_code": "right_shift"
+          },
+          "to": [
+            {
+              "key_code": "right_shift"
+            }
+          ],
+          "to_if_alone": [
+            {
+              "shell_command": "~/.local/bin/voice-toggle"
+            }
+          ],
+          "parameters": {
+            "basic.to_if_alone_timeout_milliseconds": 250
+          }
+        }
+      ]
+    }
+  ]
+}

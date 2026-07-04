@@ -1,6 +1,10 @@
 import re
-import mlx.core as mx
-import mlx_lm
+try:
+    import mlx.core as mx
+    import mlx_lm
+    _HAS_MLX = True
+except ImportError:
+    _HAS_MLX = False
 
 _model = None
 _tokenizer = None
@@ -16,6 +20,8 @@ CLEANUP_SYSTEM_PROMPT = (
 
 def load_model(model_path: str):
     global _model, _tokenizer, _loaded
+    if not _HAS_MLX:
+        return False
     import os
     path = os.path.join(model_path, "mlx_model")
     _model, _tokenizer = mlx_lm.load(path)

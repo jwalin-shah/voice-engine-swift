@@ -12,7 +12,7 @@ public struct VAD {
     /// Minimum fraction of windows that must be above threshold
     public let minActiveRatio: Float
 
-    public init(threshold: Float = 0.005, windowSize: Int = 480, minActiveRatio: Float = 0.1) {
+    public init(threshold: Float = 0.001, windowSize: Int = 480, minActiveRatio: Float = 0.1) {
         self.threshold = threshold
         self.windowSize = windowSize
         self.minActiveRatio = minActiveRatio

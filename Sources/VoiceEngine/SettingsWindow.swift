@@ -85,19 +85,17 @@ struct SettingsView: View {
 
     private var cleanupView: some View {
         VStack(spacing: 16) {
-            Text("LLM Cleanup").font(.headline)
-            Text("After transcription, clean up the text using LFM 2.5 1.2B")
+            Text("Text Cleanup").font(.headline)
+            Text("Lightweight filler-word removal, pure Swift, no external process.")
                 .font(.subheadline).foregroundColor(.secondary)
             Picker("Cleanup mode", selection: $cleanupMode) {
                 Text("Disabled").tag(CleanupService.CleanupMode.disabled.rawValue)
                 Text("Filler only").tag(CleanupService.CleanupMode.fillerOnly.rawValue)
                 Text("Full cleanup").tag(CleanupService.CleanupMode.full.rawValue)
             }.pickerStyle(.radioGroup).padding(.horizontal)
-            Text("Uses LFM 2.5 1.2B (628MB, 417 tok/s) via mlx_lm")
-                .font(.caption).foregroundColor(.secondary)
             Text("Filler only removes um, uh, like, you know, etc.")
                 .font(.caption).foregroundColor(.secondary)
-            Text("Full cleanup also adds punctuation and capitalization")
+            Text("Full cleanup currently performs the same filler removal.")
                 .font(.caption).foregroundColor(.secondary)
             Spacer()
         }.padding()

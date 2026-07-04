@@ -1,0 +1,64 @@
+#!/bin/bash
+# Integration test: verify that SIGUSR1 is delivered to voice-engine and handled.
+# Catches the ARC deallocation bug where DispatchSourceSignal was a local variable.
+
+set -euo pipefail
+
+BINARY="${HOME}/local/bin/voice-engine"
+LOG="/tmp/voice-engine-test-signal.log"
+TIMEOUT=8
+
+if [[ ! -x "$BINARY" ]]; then
+    echo "FAIL: binary not found at $BINARY" >&2; exit 1
+fi
+
+# Ensure no existing instance interferes
+pkill -x voice-engine 2>/dev/null || true
+sleep 0.3
+
+rm -f "$LOG"
+"$BINARY" > "$LOG" 2>&1 &
+PID=$!
+trap "kill $PID 2>/dev/null || true; pkill -x voice-engine 2>/dev/null || true" EXIT
+
+echo "Started voice-engine pid=$PID, waiting for engine load..."
+
+# Wait for engine to load (CoreML can take a few seconds)
+DEADLINE=$((SECONDS + TIMEOUT))
+while [[ $SECONDS -lt $DEADLINE ]]; do
+    if grep -q "Moonshine CoreML engine loaded" "$LOG" 2>/dev/null; then
+        break
+    fi
+    sleep 0.5
+done
+
+if ! grep -q "Moonshine CoreML engine loaded" "$LOG" 2>/dev/null; then
+    echo "FAIL: engine did not load within ${TIMEOUT}s" >&2
+    cat "$LOG" >&2
+    exit 1
+fi
+
+echo "Engine loaded. Sending SIGUSR1..."
+kill -USR1 "$PID"
+sleep 0.5
+
+if grep -q "\[VoiceEngine\] SIGUSR1 received" "$LOG" 2>/dev/null; then
+    echo "PASS: SIGUSR1 received and handled by voice-engine"
+else
+    echo "FAIL: SIGUSR1 not received (ARC deallocation bug?)" >&2
+    cat "$LOG" >&2
+    exit 1
+fi
+
+# Second signal: verify toggle works (should start then stop recording)
+kill -USR1 "$PID"
+sleep 0.3
+
+COUNT=$(grep -c "\[VoiceEngine\] SIGUSR1 received" "$LOG" 2>/dev/null || true)
+if [[ "$COUNT" -ge 2 ]]; then
+    echo "PASS: SIGUSR1 toggled twice ($COUNT signals received)"
+else
+    echo "WARN: only $COUNT SIGUSR1 events (expected 2)"
+fi
+
+echo "=== test-signal PASSED ==="

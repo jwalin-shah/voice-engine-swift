@@ -48,7 +48,6 @@ public actor CleanupService {
     }()
 
     nonisolated static func removeFillers(_ text: String) -> String {
-        let ns = text as NSString
         var result = text
         for (regex, replacement) in fillerPatterns {
             result = regex.stringByReplacingMatches(in: result, range: NSRange(location: 0, length: (result as NSString).length), withTemplate: replacement)
