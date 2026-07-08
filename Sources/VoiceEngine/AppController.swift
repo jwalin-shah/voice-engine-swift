@@ -31,14 +31,14 @@ public final class AppController {
     private var transcriptionTask: Task<Void, Never>?
     private var transcriptionTaskID: UUID?
 
-    private static let logDir: URL = {
+    private nonisolated static let logDir: URL = {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/voice-engine")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: dir.appendingPathComponent("audio"), withIntermediateDirectories: true)
         return dir
     }()
-    private static var metricsURL: URL { logDir.appendingPathComponent("metrics.jsonl") }
+    private nonisolated static var metricsURL: URL { logDir.appendingPathComponent("metrics.jsonl") }
 
     public init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -183,7 +183,7 @@ public final class AppController {
                 // VAD: skip transcription if audio is silent (accidental hotkey press)
                 if skipTranscriptionIfSilent && !vad.isSpeech(rawFloats) {
                     NSLog("[VoiceEngine] VAD filtered silent audio (\(rawFloats.count) samples)")
-                    writeMetric(["event": "vad_filtered", "samples": rawFloats.count])
+                    Self.writeMetric(["event": "vad_filtered", "samples": rawFloats.count])
                     return
                 }
                 // Save audio WAV before transcription (sidecar gets updated with text later)
@@ -247,11 +247,11 @@ public final class AppController {
                             meta["text"] = textToPaste
                             meta["transcription_ms"] = cmdMs
                             meta["audio_secs"] = cmdAudioSecs
-                            if let updated = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyWritten, .withoutEscapingSlashes]) { try? updated.write(to: jsonURL) }
+                            if let updated = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .withoutEscapingSlashes]) { try? updated.write(to: jsonURL) }
                         }
                     }
 
-                    writeMetric(["event": "transcription", "is_command": hasDeferred,
+                    Self.writeMetric(["event": "transcription", "is_command": hasDeferred,
                                  "transcription_ms": cmdMs,
                                  "audio_secs": cmdAudioSecs,
                                  "chars": textToPaste.count,
@@ -338,7 +338,7 @@ public final class AppController {
         return (try? wav.write(to: url)) != nil
     }
 
-    private func writeMetric(_ fields: [String: Any]) {
+    private nonisolated static func writeMetric(_ fields: [String: Any]) {
         var entry = fields
         entry["ts"] = ISO8601DateFormatter().string(from: Date())
         guard let data = try? JSONSerialization.data(withJSONObject: entry),
