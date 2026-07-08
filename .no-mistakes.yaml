@@ -1,0 +1,10 @@
+# Per-repo no-mistakes overrides for voice-engine-swift.
+# Swift Package Manager project — deterministic commands instead of agent-driven.
+
+commands:
+  build: "swift build -c release"
+  test: "swift test -v"
+
+test:
+  evidence:
+    store_in_repo: false
