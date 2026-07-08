@@ -6,6 +6,7 @@ public final class AppController {
     /// Result from the transcription + command pipeline.
     private struct TranscriptResult: Sendable {
         let text: String
+        let immediateCommand: CommandParser.VoiceCommand?
         let deferredCommand: CommandParser.VoiceCommand?
         var transcriptionMs: Double = 0
         var audioSecs: Double = 0
@@ -27,6 +28,8 @@ public final class AppController {
     private var recordingTimer: Timer?
     private var signalSource: DispatchSourceSignal?
     private nonisolated static let maxRecordingSeconds: TimeInterval = 60
+    private var transcriptionTask: Task<Void, Never>?
+    private var transcriptionTaskID: UUID?
 
     private static let logDir: URL = {
         let dir = FileManager.default.homeDirectoryForCurrentUser
@@ -114,9 +117,18 @@ public final class AppController {
 
     private func handleHotkey() {
         Foundation.NSLog("[AppController] handleHotkey called, state=\(state)")
-        if state == .transcribing { return }
-        if state == .recording { finishRecording() }
-        else { beginRecording() }
+        switch state {
+        case .transcribing:
+            transcriptionTask?.cancel()
+            transcriptionTask = nil
+            transcriptionTaskID = nil
+            state = .idle
+            Foundation.NSLog("[AppController] cancelled transcription from hotkey")
+        case .recording:
+            finishRecording()
+        case .idle:
+            beginRecording()
+        }
     }
 
     private func beginRecording() {
@@ -154,15 +166,24 @@ public final class AppController {
         guard let buffer = capture.takeBuffer() else { state = .idle; return }
         state = .transcribing
         let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
-        Task {
+        let taskID = UUID()
+        transcriptionTaskID = taskID
+        transcriptionTask = Task {
+            defer {
+                if transcriptionTaskID == taskID {
+                    transcriptionTask = nil
+                    transcriptionTaskID = nil
+                    state = .idle
+                }
+            }
             do {
                 let cs = cleanupService
                 let rawFloats = buffer.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+                try Task.checkCancellation()
                 // VAD: skip transcription if audio is silent (accidental hotkey press)
                 if skipTranscriptionIfSilent && !vad.isSpeech(rawFloats) {
                     NSLog("[VoiceEngine] VAD filtered silent audio (\(rawFloats.count) samples)")
                     writeMetric(["event": "vad_filtered", "samples": rawFloats.count])
-                    state = .idle
                     return
                 }
                 // Save audio WAV before transcription (sidecar gets updated with text later)
@@ -176,9 +197,7 @@ public final class AppController {
                     }
                     // Pure command detection
                     if let command = CommandParser.parse(text) {
-                        let ok = CommandParser.execute(command)
-                        NSLog("[VoiceEngine] command executed: \(ok) - \(command)")
-                        return TranscriptResult(text: "", deferredCommand: nil, transcriptionMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1000, audioSecs: audioSecs)
+                        return TranscriptResult(text: "", immediateCommand: command, deferredCommand: nil, transcriptionMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1000, audioSecs: audioSecs)
                     }
                     // Suffix command
                     let rawText: String
@@ -194,11 +213,17 @@ public final class AppController {
                     }
                     let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
                     NSLog("[VoiceEngine] transcription: \(String(format: "%.1f", elapsed)) ms, \(rawText.count) chars")
-                    return TranscriptResult(text: rawText, deferredCommand: deferredCmd, transcriptionMs: elapsed, audioSecs: audioSecs)
+                    return TranscriptResult(text: rawText, immediateCommand: nil, deferredCommand: deferredCmd, transcriptionMs: elapsed, audioSecs: audioSecs)
                 }.value
+                try Task.checkCancellation()
+                if let command = commandResult.immediateCommand {
+                    let ok = CommandParser.execute(command)
+                    NSLog("[VoiceEngine] command executed: \(ok) - \(command)")
+                    return
+                }
                 let textToPaste = commandResult.text
                 let deferredCommand = commandResult.deferredCommand
-                guard !textToPaste.isEmpty else { state = .idle; return }
+                guard !textToPaste.isEmpty else { return }
 
                 // Update JSON sidecar with transcription text (dataset pairing)
                 if let audioPath = audioFile {
@@ -233,16 +258,23 @@ public final class AppController {
                 } else {
                     try? logLine.write(to: logPath, atomically: true, encoding: .utf8)
                 }
-                Paster.paste(textToPaste)
+                if Paster.paste(textToPaste) {
+                    signalPasteCompleted()
+                }
                 // Execute deferred command after paste (suffix commands)
                 if let command = deferredCommand {
                     CommandParser.execute(command)
                 }
+            } catch is CancellationError {
+                NSLog("[VoiceEngine] transcription cancelled")
             } catch {
                 presentError(error.localizedDescription)
             }
-            state = .idle
         }
+    }
+
+    private func signalPasteCompleted() {
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
     }
 
     private func preloadEngine() {

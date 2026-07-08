@@ -62,8 +62,7 @@ public final class VocabularyService {
     public func applyVocabulary(to text: String) -> String {
         var result = text
         for entry in vocabulary where entry.isActive && !entry.trigger.isEmpty {
-            // Case-insensitive replacement
-            if let range = result.range(of: entry.trigger, options: [.caseInsensitive, .diacriticInsensitive]) {
+            if let range = firstWholeTriggerRange(entry.trigger, in: result) {
                 result.replaceSubrange(range, with: entry.replacement)
             }
         }
@@ -99,6 +98,13 @@ public final class VocabularyService {
     }
 
     // MARK: - Helpers
+
+    private func firstWholeTriggerRange(_ trigger: String, in text: String) -> Range<String.Index>? {
+        let escaped = NSRegularExpression.escapedPattern(for: trigger)
+        let boundary = #"[\p{L}\p{N}_]"#
+        let pattern = #"(?<!\#(boundary))\#(escaped)(?!\#(boundary))"#
+        return text.range(of: pattern, options: [.regularExpression, .caseInsensitive, .diacriticInsensitive])
+    }
 
     private func decodeArray<T: Codable>(forKey key: String) -> [T] {
         guard let data = defaults.data(forKey: key) else { return [] }

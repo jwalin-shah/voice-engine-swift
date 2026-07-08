@@ -78,6 +78,8 @@ class TestRunner {
         assertEqual(CleanupService.CleanupMode.disabled.rawValue, "Disabled", "rawValue disabled")
         assertEqual(CleanupService.CleanupMode.fillerOnly.rawValue, "Filler only", "rawValue filler")
         assertEqual(CleanupService.CleanupMode.full.rawValue, "Full", "rawValue full")
+        suite("Paster")
+        assertFalse(Paster.paste(""), "empty paste is rejected")
         suite("MoonshineEngine.chunkRanges")
         assertEqual(MoonshineEngine.chunkRanges(sampleCount: 0).count, 0, "empty audio has no chunks")
         assertEqual(MoonshineEngine.chunkRanges(sampleCount: 160000), [0..<160000], "exact encoder window is one chunk")
