@@ -225,45 +225,51 @@ public final class AppController {
                 let deferredCommand = commandResult.deferredCommand
                 guard !textToPaste.isEmpty else { return }
 
-                // Update JSON sidecar with transcription text (dataset pairing)
-                if let audioPath = audioFile {
-                    let jsonURL = URL(fileURLWithPath: audioPath).deletingPathExtension().appendingPathExtension("json")
-                    if var meta = try? JSONSerialization.jsonObject(with: Data(contentsOf: jsonURL)) as? [String: Any] {
-                        meta["text"] = textToPaste
-                        meta["transcription_ms"] = commandResult.transcriptionMs
-                        meta["audio_secs"] = commandResult.audioSecs
-                        if let updated = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .withoutEscapingSlashes]) { try? updated.write(to: jsonURL) }
-                    }
-                }
-
-                writeMetric(["event": "transcription", "is_command": deferredCommand != nil,
-                             "transcription_ms": commandResult.transcriptionMs,
-                             "audio_secs": commandResult.audioSecs,
-                             "chars": textToPaste.count,
-                             "words": textToPaste.split(separator: " ").count,
-                             "app": bundleID,
-                             "audio_file": audioFile as Any])
-
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(textToPaste, forType: .string)
-                let logPath = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent("voice-history.txt")
-                let fmt = DateFormatter()
-                fmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                let logLine = "\(fmt.string(from: Date())) | \(textToPaste)\n"
-                if let handle = try? FileHandle(forWritingTo: logPath) {
-                    handle.seekToEndOfFile()
-                    if let data = logLine.data(using: .utf8) { handle.write(data) }
-                    handle.closeFile()
-                } else {
-                    try? logLine.write(to: logPath, atomically: true, encoding: .utf8)
-                }
+                // Paste immediately — file I/O happens after, never blocks the user.
                 if Paster.paste(textToPaste) {
                     signalPasteCompleted()
                 }
                 // Execute deferred command after paste (suffix commands)
                 if let command = deferredCommand {
                     CommandParser.execute(command)
+                }
+
+                // Fire-and-forget: save training data, metrics, history in background.
+                let audioPath = audioFile
+                let cmdMs = commandResult.transcriptionMs
+                let cmdAudioSecs = commandResult.audioSecs
+                let hasDeferred = deferredCommand != nil
+                Task.detached(priority: .background) {
+                    // Update JSON sidecar with transcription text (dataset pairing)
+                    if let path = audioPath {
+                        let jsonURL = URL(fileURLWithPath: path).deletingPathExtension().appendingPathExtension("json")
+                        if var meta = try? JSONSerialization.jsonObject(with: Data(contentsOf: jsonURL)) as? [String: Any] {
+                            meta["text"] = textToPaste
+                            meta["transcription_ms"] = cmdMs
+                            meta["audio_secs"] = cmdAudioSecs
+                            if let updated = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyWritten, .withoutEscapingSlashes]) { try? updated.write(to: jsonURL) }
+                        }
+                    }
+
+                    writeMetric(["event": "transcription", "is_command": hasDeferred,
+                                 "transcription_ms": cmdMs,
+                                 "audio_secs": cmdAudioSecs,
+                                 "chars": textToPaste.count,
+                                 "words": textToPaste.split(separator: " ").count,
+                                 "app": bundleID,
+                                 "audio_file": audioPath as Any])
+
+                    let logPath = Self.logDir.appendingPathComponent("voice-history.txt")
+                    let fmt = DateFormatter()
+                    fmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                    let logLine = "\(fmt.string(from: Date())) | \(textToPaste)\n"
+                    if let handle = try? FileHandle(forWritingTo: logPath) {
+                        handle.seekToEndOfFile()
+                        if let data = logLine.data(using: .utf8) { handle.write(data) }
+                        handle.closeFile()
+                    } else {
+                        try? logLine.write(to: logPath, atomically: true, encoding: .utf8)
+                    }
                 }
             } catch is CancellationError {
                 NSLog("[VoiceEngine] transcription cancelled")

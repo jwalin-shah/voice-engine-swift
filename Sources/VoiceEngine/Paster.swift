@@ -17,9 +17,8 @@ public enum Paster {
             return true
         }
 
-        Thread.sleep(forTimeInterval: 0.02)
-        // Session tap first: lower permission requirements, works reliably.
-        // HID tap as fallback: reaches more apps but needs accessibility trust.
+        // ponytail: no sleep needed — localEventsSuppressionInterval=0 in postCommandV
+        // prevents macOS from suppressing the synthetic Cmd+V.
         if postCommandV(tap: .cgSessionEventTap, label: "session") {
             return true
         }
@@ -36,8 +35,9 @@ public enum Paster {
         src.localEventsSuppressionInterval = 0
         down.flags = .maskCommand
         up.flags = .maskCommand
+        // ponytail: post back-to-back — real keypresses don't pause between down and up.
+        // localEventsSuppressionInterval=0 means macOS won't suppress the synthetic event.
         down.post(tap: tap)
-        Thread.sleep(forTimeInterval: 0.035)
         up.post(tap: tap)
         NSLog("[VoiceEngine] pasted via Cmd+V (\(label) tap)")
         return true
