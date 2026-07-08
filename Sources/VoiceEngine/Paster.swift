@@ -17,11 +17,13 @@ public enum Paster {
             return true
         }
 
-        Thread.sleep(forTimeInterval: 0.12)
-        if postCommandV(tap: .cghidEventTap, label: "hid") {
+        Thread.sleep(forTimeInterval: 0.02)
+        // Session tap first: lower permission requirements, works reliably.
+        // HID tap as fallback: reaches more apps but needs accessibility trust.
+        if postCommandV(tap: .cgSessionEventTap, label: "session") {
             return true
         }
-        return postCommandV(tap: .cgSessionEventTap, label: "session")
+        return postCommandV(tap: .cghidEventTap, label: "hid")
     }
 
     private static func postCommandV(tap: CGEventTapLocation, label: String) -> Bool {
