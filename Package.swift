@@ -26,5 +26,10 @@ let package = Package(
             dependencies: ["VoiceEngine"],
             path: "Tests/Runner"
         ),
+        .testTarget(
+            name: "VoiceEngineSwiftPMTests",
+            dependencies: ["VoiceEngine"],
+            path: "Tests/SwiftPM"
+        ),
     ]
 )

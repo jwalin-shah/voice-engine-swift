@@ -27,6 +27,9 @@ public final class AppController {
     private var recordingTimer: Timer?
     private var signalSource: DispatchSourceSignal?
     private nonisolated static let maxRecordingSeconds: TimeInterval = 60
+    private nonisolated static let suppressIdleHotkeyAfterTranscribingPress: TimeInterval = 0.8
+    private var sawHotkeyWhileTranscribing = false
+    private var suppressIdleStartUntil: Date?
 
     private static let logDir: URL = {
         let dir = FileManager.default.homeDirectoryForCurrentUser
@@ -114,9 +117,22 @@ public final class AppController {
 
     private func handleHotkey() {
         Foundation.NSLog("[AppController] handleHotkey called, state=\(state)")
-        if state == .transcribing { return }
-        if state == .recording { finishRecording() }
-        else { beginRecording() }
+        switch state {
+        case .transcribing:
+            sawHotkeyWhileTranscribing = true
+            Foundation.NSLog("[AppController] hotkey consumed while transcribing")
+        case .recording:
+            finishRecording()
+        case .idle:
+            if let until = suppressIdleStartUntil {
+                suppressIdleStartUntil = nil
+                if Date() < until {
+                    Foundation.NSLog("[AppController] hotkey suppressed after transcribing stop intent")
+                    return
+                }
+            }
+            beginRecording()
+        }
     }
 
     private func beginRecording() {
@@ -155,6 +171,7 @@ public final class AppController {
         state = .transcribing
         let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
         Task {
+            defer { finishTranscribing() }
             do {
                 let cs = cleanupService
                 let rawFloats = buffer.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
@@ -162,7 +179,6 @@ public final class AppController {
                 if skipTranscriptionIfSilent && !vad.isSpeech(rawFloats) {
                     NSLog("[VoiceEngine] VAD filtered silent audio (\(rawFloats.count) samples)")
                     writeMetric(["event": "vad_filtered", "samples": rawFloats.count])
-                    state = .idle
                     return
                 }
                 // Save audio WAV before transcription (sidecar gets updated with text later)
@@ -198,7 +214,7 @@ public final class AppController {
                 }.value
                 let textToPaste = commandResult.text
                 let deferredCommand = commandResult.deferredCommand
-                guard !textToPaste.isEmpty else { state = .idle; return }
+                guard !textToPaste.isEmpty else { return }
 
                 // Update JSON sidecar with transcription text (dataset pairing)
                 if let audioPath = audioFile {
@@ -233,7 +249,9 @@ public final class AppController {
                 } else {
                     try? logLine.write(to: logPath, atomically: true, encoding: .utf8)
                 }
-                Paster.paste(textToPaste)
+                if Paster.paste(textToPaste) {
+                    signalPasteCompleted()
+                }
                 // Execute deferred command after paste (suffix commands)
                 if let command = deferredCommand {
                     CommandParser.execute(command)
@@ -241,8 +259,19 @@ public final class AppController {
             } catch {
                 presentError(error.localizedDescription)
             }
-            state = .idle
         }
+    }
+
+    private func finishTranscribing() {
+        if sawHotkeyWhileTranscribing {
+            sawHotkeyWhileTranscribing = false
+            suppressIdleStartUntil = Date().addingTimeInterval(Self.suppressIdleHotkeyAfterTranscribingPress)
+        }
+        state = .idle
+    }
+
+    private func signalPasteCompleted() {
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
     }
 
     private func preloadEngine() {
