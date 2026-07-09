@@ -24,3 +24,17 @@ swift run
 - Karabiner profile "Orbit" maps Right Cmd (tap) to voice toggle
 - Binary installed at ~/.local/bin/voice-engine
 - Part of the jw ecosystem
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default Matt Pocock vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout. See `docs/agents/domain.md`.
