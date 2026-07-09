@@ -15,6 +15,12 @@ public enum Paster {
     public static func paste(_ text: String) -> Bool {
         guard !text.isEmpty else { return false }
 
+        // Snapshot the frontmost app NOW — before clipboard ops or anything
+        // that might cause VoiceEngine to steal focus. VoiceEngine is
+        // .accessory policy so it shouldn't be frontmost, but if focus
+        // drifted during recording/transcription, we capture the real target.
+        let targetApp = NSWorkspace.shared.frontmostApplication
+
         // Method 1: AX direct insert at cursor. No clipboard, fastest path.
         // Works when voice-engine has Accessibility permission.
         if pasteViaAX(text) {
@@ -25,7 +31,14 @@ public enum Paster {
         // Clipboard for methods 2 and 3.
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        Thread.sleep(forTimeInterval: 0.02)
+        Thread.sleep(forTimeInterval: 0.05)  // ponytail: 50ms for pasteboard commit
+
+        // Bring the target app back to front before pasting.
+        // Belt and suspenders: if focus hasn't shifted, activate is a no-op.
+        if let app = targetApp {
+            app.activate()
+            Thread.sleep(forTimeInterval: 0.05)  // let activation settle
+        }
 
         // Method 2: osascript tells System Events to type Cmd+V.
         // System Events has Accessibility permission — this works NOW,
