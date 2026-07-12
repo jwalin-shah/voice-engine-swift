@@ -21,7 +21,12 @@ public final class AppController {
     private let vad = VAD()
     private let skipTranscriptionIfSilent = true
 
-    public private(set) var state: State = .idle { didSet { updateMenu() } }
+    public private(set) var state: State = .idle {
+        didSet {
+            updateMenu()
+            announceStateChange(from: oldValue, to: state)
+        }
+    }
     private var engineLoaded = false
     private let settingsWindow = SettingsWindow()
     private let cleanupService = CleanupService()
@@ -351,6 +356,22 @@ public final class AppController {
         } else {
             try? bytes.write(to: Self.metricsURL)
         }
+    }
+
+    private func announceStateChange(from oldState: State, to newState: State) {
+        guard oldState != newState else { return }
+        let message: String
+        switch newState {
+        case .idle:       message = "Voice engine idle"
+        case .recording:  message = "Voice engine recording"
+        case .transcribing: message = "Voice engine transcribing"
+        }
+        NSAccessibility.post(
+            element: NSApp,
+            notification: .announcementRequested,
+            userInfo: [.announcement: NSAttributedString(string: message)]
+        )
+        NSLog("[VoiceEngine] accessibility announcement: \(message)")
     }
 
     private func presentError(_ message: String) {
