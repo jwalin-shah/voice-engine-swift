@@ -563,6 +563,148 @@ class TestRunner {
         // MARK: - FullStop Punctuation tests
 
         // ── Label set invariant (no files needed) ────────────────────────
+        // MARK: - CapitalizationService tests
+
+        suite("CapitalizationService — sentence-start")
+        assertEqual(CapitalizationService.capitalize("hello"), "Hello", "single word")
+        assertEqual(CapitalizationService.capitalize("hello world"), "Hello world", "two words")
+        assertEqual(CapitalizationService.capitalize("hello. world"), "Hello. World", "period boundary")
+        assertEqual(CapitalizationService.capitalize("hello? world"), "Hello? World", "question mark boundary")
+        assertEqual(CapitalizationService.capitalize("hello! world"), "Hello! World", "exclamation mark boundary")
+        assertEqual(CapitalizationService.capitalize("a. b. c."), "A. B. C.", "multiple sentences")
+
+        suite("CapitalizationService — whitespace and quotes after punctuation")
+        assertEqual(CapitalizationService.capitalize("hello.  world"), "Hello.  World", "double space after period")
+        assertEqual(CapitalizationService.capitalize("hello.\nworld"), "Hello.\nWorld", "newline after period")
+        assertEqual(CapitalizationService.capitalize("hello.\tworld"), "Hello.\tWorld", "tab after period")
+        assertEqual(CapitalizationService.capitalize("hello. \"world"), "Hello. \"World", "quote after period — world capitalized")
+
+        suite("CapitalizationService — pronoun i")
+        assertEqual(CapitalizationService.capitalize("i think"), "I think", "sentence-start i")
+        assertEqual(CapitalizationService.capitalize("i think i can"), "I think I can", "mid-sentence i")
+        assertEqual(CapitalizationService.capitalize("i'm here"), "I'm here", "contraction i'm")
+        assertEqual(CapitalizationService.capitalize("it is what it is"), "It is what it is", "i inside 'it' untouched")
+        assertEqual(CapitalizationService.capitalize("in and out"), "In and out", "i inside 'in' untouched")
+
+        suite("CapitalizationService — proper noun dictionary")
+        // Companies
+        assertEqual(CapitalizationService.capitalize("github"), "GitHub", "github → GitHub")
+        assertEqual(CapitalizationService.capitalize("openai"), "OpenAI", "openai → OpenAI")
+        assertEqual(CapitalizationService.capitalize("anthropic"), "Anthropic", "anthropic → Anthropic")
+        assertEqual(CapitalizationService.capitalize("slack"), "Slack", "slack → Slack")
+        assertEqual(CapitalizationService.capitalize("discord"), "Discord", "discord → Discord")
+        assertEqual(CapitalizationService.capitalize("cursor"), "Cursor", "cursor → Cursor")
+        assertEqual(CapitalizationService.capitalize("apple"), "Apple", "apple → Apple")
+        assertEqual(CapitalizationService.capitalize("meta"), "Meta", "meta → Meta")
+        assertEqual(CapitalizationService.capitalize("google"), "Google", "google → Google")
+        assertEqual(CapitalizationService.capitalize("microsoft"), "Microsoft", "microsoft → Microsoft")
+        // Products
+        assertEqual(CapitalizationService.capitalize("chatgpt"), "ChatGPT", "chatgpt → ChatGPT")
+        assertEqual(CapitalizationService.capitalize("claude"), "Claude", "claude → Claude")
+        assertEqual(CapitalizationService.capitalize("moonshine"), "Moonshine", "moonshine → Moonshine")
+        assertEqual(CapitalizationService.capitalize("xcode"), "Xcode", "xcode → Xcode")
+        assertEqual(CapitalizationService.capitalize("safari"), "Safari", "safari → Safari")
+        assertEqual(CapitalizationService.capitalize("chrome"), "Chrome", "chrome → Chrome")
+        assertEqual(CapitalizationService.capitalize("firefox"), "Firefox", "firefox → Firefox")
+        assertEqual(CapitalizationService.capitalize("iterm"), "iTerm", "iterm → iTerm")
+        // Mixed casing preserved
+        assertEqual(CapitalizationService.capitalize("macos"), "macOS", "macos → macOS")
+        assertEqual(CapitalizationService.capitalize("ios"), "iOS", "ios → iOS")
+        assertEqual(CapitalizationService.capitalize("iphone"), "iPhone", "iphone → iPhone")
+        assertEqual(CapitalizationService.capitalize("ipad"), "iPad", "ipad → iPad")
+        // Protocols/formats
+        assertEqual(CapitalizationService.capitalize("javascript"), "JavaScript", "javascript → JavaScript")
+        assertEqual(CapitalizationService.capitalize("typescript"), "TypeScript", "typescript → TypeScript")
+        assertEqual(CapitalizationService.capitalize("json"), "JSON", "json → JSON")
+        assertEqual(CapitalizationService.capitalize("yaml"), "YAML", "yaml → YAML")
+        assertEqual(CapitalizationService.capitalize("api"), "API", "api → API")
+        assertEqual(CapitalizationService.capitalize("html"), "HTML", "html → HTML")
+        assertEqual(CapitalizationService.capitalize("css"), "CSS", "css → CSS")
+        assertEqual(CapitalizationService.capitalize("sql"), "SQL", "sql → SQL")
+        assertEqual(CapitalizationService.capitalize("ssh"), "SSH", "ssh → SSH")
+        assertEqual(CapitalizationService.capitalize("rest"), "REST", "rest → REST")
+        assertEqual(CapitalizationService.capitalize("http"), "HTTP", "http → HTTP")
+        // Common
+        assertEqual(CapitalizationService.capitalize("git"), "Git", "git → Git")
+        assertEqual(CapitalizationService.capitalize("mac"), "Mac", "mac → Mac")
+        assertEqual(CapitalizationService.capitalize("linux"), "Linux", "linux → Linux")
+        assertEqual(CapitalizationService.capitalize("docker"), "Docker", "docker → Docker")
+        assertEqual(CapitalizationService.capitalize("kubernetes"), "Kubernetes", "kubernetes → Kubernetes")
+        assertEqual(CapitalizationService.capitalize("python"), "Python", "python → Python")
+        assertEqual(CapitalizationService.capitalize("swift"), "Swift", "swift → Swift")
+        assertEqual(CapitalizationService.capitalize("rust"), "Rust", "rust → Rust")
+
+        suite("CapitalizationService — full-word protection")
+        assertEqual(CapitalizationService.capitalize("pineapple"), "Pineapple", "pineapple: 'apple' not matched inside")
+        assertEqual(CapitalizationService.capitalize("github is not githubby"), "GitHub is not githubby", "githubby untouched")
+        assertEqual(CapitalizationService.capitalize("slacker"), "Slacker", "slacker: 'slack' not matched inside")
+        assertEqual(CapitalizationService.capitalize("discordant"), "Discordant", "discordant: 'discord' not matched inside")
+
+        suite("CapitalizationService — possessives")
+        assertEqual(CapitalizationService.capitalize("openai's"), "OpenAI's", "openai's → OpenAI's")
+        assertEqual(CapitalizationService.capitalize("github's"), "GitHub's", "github's → GitHub's")
+        assertEqual(CapitalizationService.capitalize("apple's"), "Apple's", "apple's → Apple's")
+
+        suite("CapitalizationService — multiword names")
+        assertEqual(CapitalizationService.capitalize("vs code"), "VS Code", "vs code → VS Code")
+        assertEqual(CapitalizationService.capitalize("VS CODE"), "VS Code", "VS CODE → VS Code")
+        assertEqual(CapitalizationService.capitalize("i use vs code"), "I use VS Code", "vs code in sentence")
+
+        suite("CapitalizationService — mixed known casing preserved")
+        // Confirm known mixed-case entries survive sentence-start capitalization
+        assertEqual(CapitalizationService.capitalize("macos is great"), "macOS is great", "macOS not macOS")
+        assertEqual(CapitalizationService.capitalize("ios and macos"), "iOS and macOS", "iOS and macOS in sentence")
+        assertEqual(CapitalizationService.capitalize("iphone ipad mac"), "iPhone iPad Mac", "multiple Apple products")
+        assertEqual(CapitalizationService.capitalize("github openai chatgpt"), "GitHub OpenAI ChatGPT", "multiple products")
+
+        suite("CapitalizationService — overlapping dictionary entries")
+        // "GitHub" must not be corrupted by "Git" partial match
+        assertEqual(CapitalizationService.capitalize("github"), "GitHub", "GitHub vs Git: long wins")
+        assertEqual(CapitalizationService.capitalize("git is a vcs"), "Git is a vcs", "standalone Git")
+        assertEqual(CapitalizationService.capitalize("javascript is not java"), "JavaScript is not java", "JavaScript long form")
+
+        suite("CapitalizationService — idempotence")
+        let idemCases: [(String, String)] = [
+            ("hello world", "Hello world"),
+            ("hello. world", "Hello. World"),
+            ("i think i can", "I think I can"),
+            ("github and openai", "GitHub and OpenAI"),
+            ("macos and ios", "macOS and iOS"),
+            ("vs code is great", "VS Code is great"),
+            ("hello. \"world", "Hello. \"World"),
+            ("a. b. c.", "A. B. C."),
+            ("openai's model", "OpenAI's model"),
+        ]
+        for (input, _) in idemCases {
+            let first = CapitalizationService.capitalize(input)
+            let second = CapitalizationService.capitalize(first)
+            assertEqual(second, first, "idempotent: '\(input)' → '\(first)' → '\(second)'")
+        }
+
+        suite("CapitalizationService — empty and edge cases")
+        assertEqual(CapitalizationService.capitalize(""), "", "empty string")
+        assertEqual(CapitalizationService.capitalize("..."), "...", "punctuation only")
+        assertEqual(CapitalizationService.capitalize("!@#$%"), "!@#$%", "symbols only")
+        assertEqual(CapitalizationService.capitalize("   "), "   ", "whitespace only")
+        assertEqual(CapitalizationService.capitalize("123"), "123", "numbers only — no letters to capitalize")
+
+        suite("CapitalizationService — Unicode grapheme clusters")
+        // composed characters must not be corrupted
+        assertEqual(CapitalizationService.capitalize("café"), "Café", "accented e preserved")
+        assertEqual(CapitalizationService.capitalize("café. voilà"), "Café. Voilà", "accented chars after period")
+        // emoji sequence should pass through unchanged
+        assertEqual(CapitalizationService.capitalize("hello 👋 world"), "Hello 👋 world", "emoji preserved")
+        // decomposed e + combining acute → uppercase should handle correctly
+        let decomposed = "cafe\u{0301}"  // e + combining acute accent
+        let result = CapitalizationService.capitalize(decomposed)
+        assertTrue(result.first == "C" || result.hasPrefix("C"), "decomposed grapheme cluster survives capitalization")
+
+        suite("CapitalizationService — pipeline order: sentence-start then dict")
+        // Sentence-start runs first, then dict overrides to fix mixed-casing entries.
+        // "ios" → sentence-start: "Ios" → dict: case-insensitive "ios" matches "Ios" → "iOS"
+        assertEqual(CapitalizationService.capitalize("ios is fast"), "iOS is fast", "iOS not Ios")
+        assertEqual(CapitalizationService.capitalize("iterm is great"), "iTerm is great", "iTerm not ITerm")
+
         suite("PunctuationService — label set invariant")
         do {
             let labels = PunctuationService.idToLabel
