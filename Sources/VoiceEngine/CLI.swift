@@ -27,7 +27,8 @@ public enum Bench {
 
         let t1 = CFAbsoluteTimeGetCurrent()
         do {
-            let text = try engine.transcribe(rawAudio: samples)
+            var timing: TranscribeTiming? = nil
+            let text = try engine.transcribe(rawAudio: samples, timing: &timing)
             let elapsed = (CFAbsoluteTimeGetCurrent() - t1) * 1000
             print("  Transcribe: \(String(format: "%.0f", elapsed))ms")
             print("  Text: \"\(text)\"")

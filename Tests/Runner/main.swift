@@ -341,6 +341,95 @@ class TestRunner {
                         "shorter trigger should not partial-match longer word")
             VocabularyService.shared.vocabulary = []
         }
+
+        // MARK: - Punctuation Service tests
+
+        suite("PunctuationService — tokenizer init")
+        do {
+            let modelDir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".cache/fullstop-coreml/large")
+            if FileManager.default.fileExists(atPath: modelDir.appendingPathComponent("tokenizer_compact.json").path),
+               let tok = try? FullStopTokenizer(vocabDir: modelDir) {
+                assertEqual(tok.bosId, 0, "BOS id")
+                assertEqual(tok.eosId, 2, "EOS id")
+                assertEqual(tok.padId, 1, "PAD id")
+                assertEqual(tok.unkId, 3, "UNK id")
+                ok("tokenizer loaded")
+            } else {
+                fail("tokenizer_compact.json not found")
+            }
+        }
+
+        suite("PunctuationService — tokenizer encode/decode")
+        do {
+            let modelDir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".cache/fullstop-coreml/large")
+            guard FileManager.default.fileExists(atPath: modelDir.appendingPathComponent("tokenizer_compact.json").path) else {
+                fail("tokenizer file missing")
+                return
+            }
+            guard let tok = try? FullStopTokenizer(vocabDir: modelDir) else { fail("tokenizer init failed"); return }
+
+            let text = "hello world"
+            let result = tok.encode(text, maxLength: 256)
+            assertTrue(result.inputIds.count <= 256, "encoded within maxLength")
+            assertEqual(result.inputIds[0], 0, "starts with BOS")
+
+            let decoded = tok.decode(result.inputIds)
+            assertEqual(decoded, text, "encode/decode roundtrip")
+        }
+
+        suite("PunctuationService — label set invariant")
+        do {
+            let labels = [0: "", 1: ".", 2: ",", 3: "?", 4: "-", 5: ":"]
+            let allowed = Set([".", ",", "?", "-", ":", ""])
+            for (_, char) in labels {
+                assertTrue(allowed.contains(char), "label is allowed")
+            }
+            assertEqual(labels.count, 6, "exactly 6 labels")
+        }
+
+        suite("PunctuationService — overlength truncation")
+        do {
+            let modelDir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".cache/fullstop-coreml/large")
+            guard FileManager.default.fileExists(atPath: modelDir.appendingPathComponent("tokenizer_compact.json").path) else {
+                fail("tokenizer file missing")
+                return
+            }
+            guard let tok = try? FullStopTokenizer(vocabDir: modelDir) else { fail("tokenizer init failed"); return }
+
+            let longText = String(repeating: "the quick brown fox jumps over the lazy dog ", count: 20)
+            let result = tok.encode(longText, maxLength: 256)
+            assertTrue(result.inputIds.count == 256, "padded to maxLength=256")
+        }
+
+                // FullStop CoreML model availability check.
+        // Integration tests that require async (model load, restore) run via
+        // the Python verify step in export_fullstop.py instead.
+        suite("PunctuationService — model artifact available")
+        do {
+            let modelDir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".cache/fullstop-coreml/large")
+            let mlpackage = modelDir.appendingPathComponent("fullstop-punctuation.mlpackage")
+            let tokFile = modelDir.appendingPathComponent("tokenizer_compact.json")
+            let cfgFile = modelDir.appendingPathComponent("config.json")
+
+            let modelExists = FileManager.default.fileExists(atPath: mlpackage.path)
+            let tokExists = FileManager.default.fileExists(atPath: tokFile.path)
+            let cfgExists = FileManager.default.fileExists(atPath: cfgFile.path)
+
+            assertTrue(modelExists, "mlpackage exists")
+            assertTrue(tokExists, "tokenizer_compact.json exists")
+            assertTrue(cfgExists, "config.json exists")
+
+            if modelExists && tokExists {
+                ok("all FullStop artifacts present")
+            } else {
+                fail("some FullStop artifacts missing — run Scripts/export_fullstop.py")
+            }
+        }
+
     }
 }
 

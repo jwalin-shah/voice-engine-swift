@@ -28,8 +28,10 @@ public final class AppController {
         }
     }
     private var engineLoaded = false
+    private var punctuationLoaded = false
     private let settingsWindow = SettingsWindow()
     private let cleanupService = CleanupService()
+    private let punctuationService = PunctuationService()
     private var recordingTimer: Timer?
     private var signalSource: DispatchSourceSignal?
     private nonisolated static let maxRecordingSeconds: TimeInterval = 60
@@ -84,6 +86,11 @@ public final class AppController {
             action: nil, keyEquivalent: "")
         engineStatus.isEnabled = false
         menu.addItem(engineStatus)
+        let punctuationStatus = NSMenuItem(
+            title: punctuationLoaded ? "FullStop punctuation" : "FullStop punctuation loading...",
+            action: nil, keyEquivalent: "")
+        punctuationStatus.isEnabled = false
+        menu.addItem(punctuationStatus)
         let builtInMic = NSMenuItem(
             title: "Always use Built-in Mic",
             action: #selector(toggleBuiltInMic), keyEquivalent: "")
@@ -193,10 +200,11 @@ public final class AppController {
                 }
                 // Save audio WAV before transcription (sidecar gets updated with text later)
                 let audioFile = saveAudio(floats: rawFloats, transcription: nil, app: bundleID)
-                let commandResult: TranscriptResult = try await Task.detached(priority: .userInitiated) { [engine, bundleID, cs, rawFloats] in
+                let commandResult: TranscriptResult = try await Task.detached(priority: .userInitiated) { [engine, bundleID, cs, ps = punctuationService, rawFloats] in
                     let startTime = CFAbsoluteTimeGetCurrent()
                     let audioSecs = Double(rawFloats.count) / 16000.0
-                    var text = try engine.transcribeLong(rawAudio: rawFloats)
+                    var timing: TranscribeTiming? = nil
+                    var text = try engine.transcribeLong(rawAudio: rawFloats, timing: &timing)
                     if cs.mode != .disabled {
                         text = await cs.clean(text)
                     }
@@ -208,11 +216,13 @@ public final class AppController {
                     let rawText: String
                     let deferredCmd: CommandParser.VoiceCommand?
                     if let (prefix, command) = CommandParser.extractCommand(from: text) {
-                        let withVocab = VocabularyService.shared.process(prefix, frontAppBundleID: bundleID)
+                        let punctuated = (try? await ps.restore(prefix)) ?? prefix
+                        let withVocab = VocabularyService.shared.process(punctuated, frontAppBundleID: bundleID)
                         rawText = withVocab.trimmingCharacters(in: .whitespacesAndNewlines)
                         deferredCmd = command
                     } else {
-                        let withVocab = VocabularyService.shared.process(text, frontAppBundleID: bundleID)
+                        let punctuated = (try? await ps.restore(text)) ?? text
+                        let withVocab = VocabularyService.shared.process(punctuated, frontAppBundleID: bundleID)
                         rawText = withVocab.trimmingCharacters(in: .whitespacesAndNewlines)
                         deferredCmd = nil
                     }
@@ -298,6 +308,17 @@ public final class AppController {
             } catch {
                 NSLog(" Engine load failed: \(error.localizedDescription)")
                 presentError("Engine load failed: \(error.localizedDescription)")
+            }
+        }
+        Task {
+            do {
+                try await punctuationService.load()
+                punctuationLoaded = true
+                updateMenu()
+                NSLog("[VoiceEngine] FullStop punctuation model loaded")
+            } catch {
+                NSLog(" Punctuation load failed: \(error.localizedDescription)")
+                // Non-fatal: punctuation service unavailable, transcription still works.
             }
         }
     }
