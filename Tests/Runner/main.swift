@@ -16,48 +16,31 @@ class TestRunner {
     func runAll() {
         suite("CommandParser.parse")
         assertEqual(CommandParser.parse("undo"), .undo, "undo")
-        assertEqual(CommandParser.parse("new line"), .newLine, "new line")
-        assertEqual(CommandParser.parse("newline"), .newLine, "newline")
+        assertEqual(CommandParser.parse("new line"), .pressEnter, "new line")
+        assertEqual(CommandParser.parse("newline"), .pressEnter, "newline")
         assertEqual(CommandParser.parse("new paragraph"), .newParagraph, "new paragraph")
         assertEqual(CommandParser.parse("tab"), .tab, "tab")
-        assertEqual(CommandParser.parse("delete that"), .deleteThat, "delete that")
-        assertEqual(CommandParser.parse("delete this"), .deleteThat, "delete this")
-        assertEqual(CommandParser.parse("capitalize that"), .capitalizeThat, "capitalize that")
-        assertEqual(CommandParser.parse("uppercase that"), .capitalizeThat, "uppercase that")
-        assertEqual(CommandParser.parse("lowercase that"), .lowercaseThat, "lowercase that")
-        assertEqual(CommandParser.parse("select hello world"), .select("hello world"), "select hello world")
-        assertEqual(CommandParser.parse("SELECT HELLO"), .select("HELLO"), "SELECT HELLO parsed")
-        assertEqual(CommandParser.parse("replace foo with bar"), .replace("foo", "bar"), "replace foo with bar")
-        assertEqual(CommandParser.parse("replace a with b c"), .replace("a", "b c"), "replace a with b c")
-        assertNil(CommandParser.parse("select "), "select no target")
-        assertNil(CommandParser.parse("select"), "select exact")
-        assertNil(CommandParser.parse("replace foo bar"), "replace without with")
-        assertNil(CommandParser.parse("replace  with "), "replace empty args")
+        assertEqual(CommandParser.parse("press enter"), .pressEnter, "press enter")
         assertNil(CommandParser.parse("hello world"), "no command")
         assertNil(CommandParser.parse(""), "empty string")
         assertNil(CommandParser.parse("   "), "whitespace only")
         assertEqual(CommandParser.parse("  undo  "), .undo, "padded undo")
         suite("CommandParser.extractCommand")
         do { let r = CommandParser.extractCommand(from: "hello world undo"); assertEqual(r?.prefix, "hello world"); assertEqual(r?.command, .undo) }
-        assertEqual(CommandParser.extractCommand(from: "hello new line")?.command, .newLine)
-        assertEqual(CommandParser.extractCommand(from: "hello world capitalize that")?.command, .capitalizeThat)
-        do { let r = CommandParser.extractCommand(from: "hello world select foo"); assertEqual(r?.prefix, "hello world"); assertEqual(r?.command, .select("foo")) }
-        assertEqual(CommandParser.extractCommand(from: "hello world replace old with new")?.command, .replace("old", "new"))
+        assertEqual(CommandParser.extractCommand(from: "hello new line")?.command, .pressEnter)
+        assertEqual(CommandParser.extractCommand(from: "hello press enter")?.command, .pressEnter)
+        assertEqual(CommandParser.extractCommand(from: "hello tab")?.command, .tab)
+        assertEqual(CommandParser.extractCommand(from: "hello new paragraph")?.command, .newParagraph)
         assertNil(CommandParser.extractCommand(from: "undo"), "pure undo skipped")
         assertNil(CommandParser.extractCommand(from: "new line"), "pure new line skipped")
         assertNil(CommandParser.extractCommand(from: "helloundo"), "no word boundary")
         assertNil(CommandParser.extractCommand(from: "hello_undo"), "underscore boundary")
         assertNil(CommandParser.extractCommand(from: ""), "empty string")
-        assertEqual(CommandParser.extractCommand(from: "hello world delete that")?.command, .deleteThat)
-        assertEqual(CommandParser.extractCommand(from: "hello lowercase that")?.command, .lowercaseThat)
-        assertEqual(CommandParser.extractCommand(from: "hello uppercase that")?.command, .capitalizeThat)
-        assertEqual(CommandParser.extractCommand(from: "hello tab")?.command, .tab)
-        assertEqual(CommandParser.extractCommand(from: "hello new paragraph")?.command, .newParagraph)
         suite("CommandParser.Equatable")
-        assertEqual(CommandParser.VoiceCommand.select("a"), .select("a"))
         assertEqual(CommandParser.VoiceCommand.undo, .undo)
-        assertTrue(CommandParser.VoiceCommand.select("a") != .select("b"))
-        assertTrue(CommandParser.VoiceCommand.undo != .newLine)
+        assertEqual(CommandParser.VoiceCommand.pressEnter, .pressEnter)
+        assertTrue(CommandParser.VoiceCommand.undo != .pressEnter)
+        assertTrue(CommandParser.VoiceCommand.pressEnter != .newParagraph)
         suite("VocabularyService")
         UserDefaults.standard.removeObject(forKey: "customVocabulary")
         UserDefaults.standard.removeObject(forKey: "appCommands")
@@ -204,21 +187,24 @@ class TestRunner {
 
         suite("CommandParser adversarial — extract ambiguities")
         do {
-            // "select" with no target as suffix
-            assertNil(CommandParser.extractCommand(from: "hello select"), "select with no target → nil")
-            // "replace" with no valid old/new pair
-            assertNil(CommandParser.extractCommand(from: "hello replace"), "replace with no args → nil")
-            assertNil(CommandParser.extractCommand(from: "hello replace foo"), "replace without with → nil")
             // Double suffix: extracts the last command
-            let doubled = CommandParser.extractCommand(from: "hello delete that delete that")
+            let doubled = CommandParser.extractCommand(from: "hello new line new line")
             assertNotNil(doubled, "double suffix extracts")
-            assertEqual(doubled?.command, .deleteThat, "last delete that wins")
-            assertEqual(doubled?.prefix, "hello delete that", "prefix stops before last command")
+            assertEqual(doubled?.command, .pressEnter, "last new line wins")
+            assertEqual(doubled?.prefix, "hello new line", "prefix stops before last command")
             // Very long input should not hang (10k chars + suffix)
             let longPrefix = String(repeating: "word ", count: 2000) + "undo"
             let result = CommandParser.extractCommand(from: longPrefix)
             assertNotNil(result, "10k-char input with suffix undo should extract")
             assertEqual(result?.command, .undo, "extracted command is undo")
+            // Commands that used to exist are now just text
+            assertNil(CommandParser.parse("delete that"), "delete that is no longer a command")
+            assertNil(CommandParser.parse("capitalize that"), "capitalize that is no longer a command")
+            assertNil(CommandParser.parse("select hello"), "select is no longer a command")
+            assertNil(CommandParser.parse("replace foo with bar"), "replace is no longer a command")
+            // They also don't extract as suffixes
+            assertNil(CommandParser.extractCommand(from: "hello delete that"), "delete that no longer a suffix command")
+            assertNil(CommandParser.extractCommand(from: "hello capitalize that"), "capitalize that not a suffix")
         }
 
         suite("CommandParser adversarial — position boundaries")
@@ -340,6 +326,34 @@ class TestRunner {
             assertEqual(VocabularyService.shared.applyVocabulary(to: "testing now"), "testing now",
                         "shorter trigger should not partial-match longer word")
             VocabularyService.shared.vocabulary = []
+        }
+
+        suite("MoonshineEngine sequential transcribe")
+        let baseDir = URL(fileURLWithPath:
+            "/Users/jwalinshah/.cache/moonshine-coreml/base")
+        if FileManager.default.fileExists(atPath: baseDir.path) {
+            let engine = MoonshineEngine(modelDir: baseDir)
+            do {
+                try engine.load()
+                ok("base engine loaded")
+
+                // Transcribe same short file 3 times sequentially
+                let wav = "/Users/jwalinshah/Library/Logs/voice-engine/audio/2026-07-01-22-21-11.wav"
+                guard let (samples, _) = Bench.loadAudio(wav) else {
+                    fail("failed to load test WAV")
+                    return
+                }
+                for i in 1...3 {
+                    var t: TranscribeTiming? = nil
+                    let text = try engine.transcribe(rawAudio: samples, timing: &t)
+                    let empty = text.trimmingCharacters(in: .whitespaces).isEmpty
+                    assertFalse(empty, "call \(i): transcript should not be empty (got \"\(text)\")")
+                }
+            } catch {
+                fail("base engine: \(error)")
+            }
+        } else {
+            ok("base model dir not found — skipping sequential test")
         }
     }
 }

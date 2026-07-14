@@ -68,6 +68,7 @@ public final class MoonshineEngine: @unchecked Sendable {
     private var arch: ArchConfig?
     private var tokenizer: SPModel?
     private var ready = false
+    private var useStateful = false  // true if decoder has cross-KV as state (not inputs)
     private let modelDir: URL
     private let compiledCacheDir: URL
     private var cosMLArrays: [MLMultiArray]?
@@ -77,10 +78,14 @@ public final class MoonshineEngine: @unchecked Sendable {
     private var vWeights: [[Float]]?
     private var kBias: [[Float]]?
     private var vBias: [[Float]]?
+    // V2 position biases: per-layer, per-position bias added after cross-KV projection.
+    // Shape: [NL][S_ENC_MAX * DEC_HID] — nil for v1 models.
+    private var posBiasK: [[Float]]?
+    private var posBiasV: [[Float]]?
 
     struct ArchConfig {
-        let NL: Int, H: Int, D: Int, HID: Int, S_MAX: Int, S_ENC_MAX: Int
-        let ROT_DIM: Int
+        let NL: Int, H: Int, D: Int, ENC_HID: Int, DEC_HID: Int
+        let S_MAX: Int, S_ENC_MAX: Int, ROT_DIM: Int
     }
 
     public init(modelDir: URL? = nil) {
@@ -113,7 +118,12 @@ public final class MoonshineEngine: @unchecked Sendable {
 
     public func load() throws {
         let encDir = modelDir.appendingPathComponent("encoder.mlpackage")
-        let decDir = modelDir.appendingPathComponent("decoder_stateful.mlpackage")
+        // Prefer stateful decoder; fall back to nonstateful if not present
+        let statefulDecDir = modelDir.appendingPathComponent("decoder_stateful.mlpackage")
+        let nonstatefulDecDir = modelDir.appendingPathComponent("decoder_nonstateful.mlpackage")
+        let useStatefulDecoder = FileManager.default.fileExists(atPath: statefulDecDir.path)
+        self.useStateful = useStatefulDecoder
+        let decDir = useStatefulDecoder ? statefulDecDir : nonstatefulDecDir
         let configPath = modelDir.appendingPathComponent("weights/config.json")
         let spmPath = modelDir.appendingPathComponent("id_to_piece.json")
 
@@ -130,10 +140,10 @@ public final class MoonshineEngine: @unchecked Sendable {
         // Compile .mlpackage -> .mlmodelc (persistent cache), then load
         let encCompiled = try compileOrCached(encDir)
         let encCfg = MLModelConfiguration()
-        encCfg.computeUnits = .cpuAndNeuralEngine
+        encCfg.computeUnits = .cpuAndGPU  // try GPU for encoder, avoid cpuOnly if it's the issue
         encoder = try MLModel(contentsOf: encCompiled, configuration: encCfg)
 
-        // Load decoder model.
+        // Load decoder model from compiled cache.
         let decCompiled = try compileOrCached(decDir)
         let decCfg = MLModelConfiguration()
         decCfg.computeUnits = .cpuOnly
@@ -141,8 +151,12 @@ public final class MoonshineEngine: @unchecked Sendable {
 
         let cfgData = try Data(contentsOf: configPath)
         let json = try JSONSerialization.jsonObject(with: cfgData) as! [String: Int]
+        // Support both v1 (HID) and v2 (ENC_HID + DEC_HID) config formats.
+        let encHid = json["ENC_HID"] ?? json["HID"]!
+        let decHid = json["DEC_HID"] ?? json["HID"]!
         let a = ArchConfig(
-            NL: json["NL"]!, H: json["H"]!, D: json["D"]!, HID: json["HID"]!,
+            NL: json["NL"]!, H: json["H"]!, D: json["D"]!,
+            ENC_HID: encHid, DEC_HID: decHid,
             S_MAX: json["S_MAX"]!, S_ENC_MAX: json["S_ENC_MAX"]!,
             ROT_DIM: json["ROT_DIM"]!
         )
@@ -177,22 +191,41 @@ public final class MoonshineEngine: @unchecked Sendable {
 
         // Pre-load K/V projection weights into memory (avoids 12+ file reads per transcribe).
         let HD = a.H * a.D
-        let HID = a.HID
+        let ENC_HID = a.ENC_HID
+        let DEC_HID = a.DEC_HID
+        let isV2 = (ENC_HID != DEC_HID)  // v2 has different encoder/decoder hidden dims
         var kW = [[Float]](); var vW = [[Float]]()
         var kB = [[Float]](); var vB = [[Float]]()
+        var pbK: [[Float]]? = nil; var pbV: [[Float]]? = nil
         kW.reserveCapacity(a.NL); vW.reserveCapacity(a.NL)
         kB.reserveCapacity(a.NL); vB.reserveCapacity(a.NL)
+        if isV2 {
+            pbK = [[Float]](); pbV = [[Float]]()
+            pbK!.reserveCapacity(a.NL); pbV!.reserveCapacity(a.NL)
+        }
         for i in 0..<a.NL {
-            kW.append(try loadF32(weightsDir.appendingPathComponent("layer\(i)_k_weight.f32"), count: HD * HID))
-            vW.append(try loadF32(weightsDir.appendingPathComponent("layer\(i)_v_weight.f32"), count: HD * HID))
-            let kbPath = weightsDir.appendingPathComponent("layer\(i)_k_bias.f32")
-            kB.append(FileManager.default.fileExists(atPath: kbPath.path)
-                      ? try loadF32(kbPath, count: HD) : [Float](repeating: 0, count: HD))
-            let vbPath = weightsDir.appendingPathComponent("layer\(i)_v_bias.f32")
-            vB.append(FileManager.default.fileExists(atPath: vbPath.path)
-                      ? try loadF32(vbPath, count: HD) : [Float](repeating: 0, count: HD))
+            // Merged K/V weights: [DEC_HID, ENC_HID]
+            kW.append(try loadF32(weightsDir.appendingPathComponent("layer\(i)_k_weight.f32"), count: DEC_HID * ENC_HID))
+            vW.append(try loadF32(weightsDir.appendingPathComponent("layer\(i)_v_weight.f32"), count: DEC_HID * ENC_HID))
+            if isV2 {
+                // V2: per-position bias [S_ENC_MAX * DEC_HID]
+                pbK!.append(try loadF32(weightsDir.appendingPathComponent("layer\(i)_pos_bias_k.f32"), count: a.S_ENC_MAX * DEC_HID))
+                pbV!.append(try loadF32(weightsDir.appendingPathComponent("layer\(i)_pos_bias_v.f32"), count: a.S_ENC_MAX * DEC_HID))
+                // V2: no per-layer constant bias
+                kB.append([Float](repeating: 0, count: DEC_HID))
+                vB.append([Float](repeating: 0, count: DEC_HID))
+            } else {
+                // V1: per-layer constant bias (shared across all positions)
+                let kbPath = weightsDir.appendingPathComponent("layer\(i)_k_bias.f32")
+                kB.append(FileManager.default.fileExists(atPath: kbPath.path)
+                          ? try loadF32(kbPath, count: HD) : [Float](repeating: 0, count: HD))
+                let vbPath = weightsDir.appendingPathComponent("layer\(i)_v_bias.f32")
+                vB.append(FileManager.default.fileExists(atPath: vbPath.path)
+                          ? try loadF32(vbPath, count: HD) : [Float](repeating: 0, count: HD))
+            }
         }
         kWeights = kW; vWeights = vW; kBias = kB; vBias = vB
+        posBiasK = pbK; posBiasV = pbV
 
         ready = true
         Foundation.NSLog("[MoonshineEngine] loaded — encoder.ANE + decoder.CPU + SPM")
@@ -216,9 +249,10 @@ public final class MoonshineEngine: @unchecked Sendable {
         timing?.totalMs = 0  // reset; will set at end
         let tTotal = CFAbsoluteTimeGetCurrent()
 
-        // 1. Pad to nearest bucket (minimizes padding noise in streaming).
-        var audio = rawAudio
+        // 1. Pad to full chunk size (encoder requires fixed input length).
         let maxSamples = 160000
+        let originalSampleCount = min(rawAudio.count, maxSamples)
+        var audio = rawAudio
         if audio.count < maxSamples {
             audio.append(contentsOf: [Float](repeating: 0, count: maxSamples - audio.count))
         } else if audio.count > maxSamples {
@@ -241,19 +275,25 @@ public final class MoonshineEngine: @unchecked Sendable {
                 "Encoder output has \(S_enc) frames, exceeding decoder limit \(arch.S_ENC_MAX)"
             )
         }
+        // Frames representing actual (non-padded) audio. Encoder stride = maxSamples / S_ENC_MAX.
+        let actualEncFrames = max(1, min(
+            Int(ceil(Double(originalSampleCount) * Double(arch.S_ENC_MAX) / Double(maxSamples))),
+            S_enc
+        ))
         let hidden = mlToFloats(encOut)
 
         // 3. Build cross-KV via Accelerate gemm.
         let weightsDir = modelDir.appendingPathComponent("weights")
         let tCrossKV = CFAbsoluteTimeGetCurrent()
         let (crossK, crossV, crossMask) = try buildCrossKV(
-            hidden: hidden, S_enc: S_enc, arch: arch, weightsDir)
+            hidden: hidden, S_enc: S_enc, actualEncFrames: actualEncFrames,
+            arch: arch, weightsDir)
         let crossKVMs = (CFAbsoluteTimeGetCurrent() - tCrossKV) * 1000
 
         // 4. Decoder loop.
         let tDecoder = CFAbsoluteTimeGetCurrent()
         let result = try decodeLoop(crossK: crossK, crossV: crossV, crossMask: crossMask,
-                               S_enc: S_enc, arch: arch, decoder: decoder,
+                               S_enc: actualEncFrames, arch: arch, decoder: decoder,
                                weightsDir: weightsDir)
         let decoderMs = (CFAbsoluteTimeGetCurrent() - tDecoder) * 1000
 
@@ -359,16 +399,21 @@ public final class MoonshineEngine: @unchecked Sendable {
 
     // MARK: - Cross-KV construction
 
-    private func buildCrossKV(hidden: [Float], S_enc: Int, arch: ArchConfig,
+    private func buildCrossKV(hidden: [Float], S_enc: Int, actualEncFrames: Int,
+                               arch: ArchConfig,
                                _ weightsDir: URL) throws -> (MLMultiArray, MLMultiArray, MLMultiArray) {
         dbg("BCV-ENTER")
         guard let kWeights, let vWeights, let kBias, let vBias else {
             // Fallback: use file-based loading (shouldn't happen if load() was called)
-            return try buildCrossKVFile(hidden: hidden, S_enc: S_enc, arch: arch, weightsDir: weightsDir)
+            return try buildCrossKVFile(hidden: hidden, S_enc: S_enc,
+                                        actualEncFrames: actualEncFrames,
+                                        arch: arch, weightsDir: weightsDir)
         }
-        let NL = arch.NL, H = arch.H, D = arch.D, HID = arch.HID
+        let NL = arch.NL, H = arch.H, D = arch.D
+        let ENC_HID = arch.ENC_HID, DEC_HID = arch.DEC_HID
         let HD = H * D
         let S_ENC_MAX = arch.S_ENC_MAX
+        let isV2 = (ENC_HID != DEC_HID)
 
         let crossK = try MLMultiArray(
             shape: [NSNumber(value: NL), 1, NSNumber(value: H),
@@ -388,17 +433,33 @@ public final class MoonshineEngine: @unchecked Sendable {
         for i in 0..<NL {
             let kw = kWeights[i]
             let vw = vWeights[i]
-            var k = gemm(M: S_enc, N: HD, K: HID, A: hidden, B: kw)
-            var v = gemm(M: S_enc, N: HD, K: HID, A: hidden, B: vw)
+            // Gemm: hidden [S_enc, ENC_HID] @ kw^T [DEC_HID, ENC_HID] -> [S_enc, DEC_HID]
+            // For v1, ENC_HID == DEC_HID == HID, so same as before.
+            var k = gemm(M: S_enc, N: HD, K: ENC_HID, A: hidden, B: kw)
+            var v = gemm(M: S_enc, N: HD, K: ENC_HID, A: hidden, B: vw)
 
-            let kbi = kBias[i]
-            for j in 0..<k.count { k[j] += kbi[j % HD] }
-            let vbi = vBias[i]
-            for j in 0..<v.count { v[j] += vbi[j % HD] }
+            if isV2, let posBiasK, let posBiasV {
+                // V2: add per-position bias (accounts for decoder.proj @ pos_emb).
+                // posBiasK[i] has shape [S_ENC_MAX * DEC_HID], laid out as [pos * DEC_HID + j].
+                let pbk = posBiasK[i]
+                let pbv = posBiasV[i]
+                for pos in 0..<S_enc {
+                    let poff = pos * HD
+                    for j in 0..<HD {
+                        k[poff + j] += pbk[poff + j]
+                        v[poff + j] += pbv[poff + j]
+                    }
+                }
+            } else {
+                // V1: per-layer constant bias (broadcast across positions).
+                let kbi = kBias[i]
+                for j in 0..<k.count { k[j] += kbi[j % HD] }
+                let vbi = vBias[i]
+                for j in 0..<v.count { v[j] += vbi[j % HD] }
+            }
 
             let layerOff = i * H * S_ENC_MAX * D
-            // ponytail: direct element copy instead of 4,992 memcpy(144) syscalls per layer.
-            // D=36 — small enough for inline vectorized copy, no kernel transition.
+            // ponytail: direct element copy. D varies (36 for v1, 64 for v2).
             // Layout: gemm output is [S_enc, HD] where HD=H*D. Target is [H, S_enc, D].
             // Copy H heads × S_enc frames × D dims with correct strides.
             k.withUnsafeMutableBufferPointer { kBuf in
@@ -429,17 +490,20 @@ public final class MoonshineEngine: @unchecked Sendable {
             }
         }
 
-        for s in 0..<S_ENC_MAX { mPtr[s] = s < S_enc ? 0.0 : -10000.0 }
+        for s in 0..<S_ENC_MAX { mPtr[s] = s < actualEncFrames ? 0.0 : -10000.0 }
         dbg("BCV-DONE")
         return (crossK, crossV, crossMask)
     }
 
     /// File-based fallback for buildCrossKV (used if cached weights aren't available).
-    private func buildCrossKVFile(hidden: [Float], S_enc: Int, arch: ArchConfig,
+    private func buildCrossKVFile(hidden: [Float], S_enc: Int, actualEncFrames: Int,
+                                   arch: ArchConfig,
                                    weightsDir: URL) throws -> (MLMultiArray, MLMultiArray, MLMultiArray) {
-        let NL = arch.NL, H = arch.H, D = arch.D, HID = arch.HID
+        let NL = arch.NL, H = arch.H, D = arch.D
+        let ENC_HID = arch.ENC_HID, DEC_HID = arch.DEC_HID
         let HD = H * D
         let S_ENC_MAX = arch.S_ENC_MAX
+        let isV2 = (ENC_HID != DEC_HID)
 
         let crossK = try MLMultiArray(
             shape: [NSNumber(value: NL), 1, NSNumber(value: H),
@@ -459,28 +523,48 @@ public final class MoonshineEngine: @unchecked Sendable {
 
         for i in 0..<NL {
             let kw = try loadF32(weightsDir.appendingPathComponent("layer\(i)_k_weight.f32"),
-                                 count: HD * HID)
+                                 count: DEC_HID * ENC_HID)
             let vw = try loadF32(weightsDir.appendingPathComponent("layer\(i)_v_weight.f32"),
-                                 count: HD * HID)
+                                 count: DEC_HID * ENC_HID)
 
-            var k = gemm(M: S_enc, N: HD, K: HID, A: hidden, B: kw)
-            var v = gemm(M: S_enc, N: HD, K: HID, A: hidden, B: vw)
+            var k = gemm(M: S_enc, N: HD, K: ENC_HID, A: hidden, B: kw)
+            var v = gemm(M: S_enc, N: HD, K: ENC_HID, A: hidden, B: vw)
 
-            let kbPath = weightsDir.appendingPathComponent("layer\(i)_k_bias.f32")
-            if FileManager.default.fileExists(atPath: kbPath.path) {
-                let kb = try loadF32(kbPath, count: HD)
-                for j in 0..<k.count { k[j] += kb[j % HD] }
-            }
-            let vbPath = weightsDir.appendingPathComponent("layer\(i)_v_bias.f32")
-            if FileManager.default.fileExists(atPath: vbPath.path) {
-                let vb = try loadF32(vbPath, count: HD)
-                for j in 0..<v.count { v[j] += vb[j % HD] }
+            if isV2 {
+                // V2: per-position bias
+                let pbkPath = weightsDir.appendingPathComponent("layer\(i)_pos_bias_k.f32")
+                if FileManager.default.fileExists(atPath: pbkPath.path) {
+                    let pbk = try loadF32(pbkPath, count: S_ENC_MAX * DEC_HID)
+                    for pos in 0..<S_enc {
+                        let poff = pos * HD
+                        for j in 0..<HD { k[poff + j] += pbk[poff + j] }
+                    }
+                }
+                let pbvPath = weightsDir.appendingPathComponent("layer\(i)_pos_bias_v.f32")
+                if FileManager.default.fileExists(atPath: pbvPath.path) {
+                    let pbv = try loadF32(pbvPath, count: S_ENC_MAX * DEC_HID)
+                    for pos in 0..<S_enc {
+                        let poff = pos * HD
+                        for j in 0..<HD { v[poff + j] += pbv[poff + j] }
+                    }
+                }
+            } else {
+                // V1: per-layer constant bias
+                let kbPath = weightsDir.appendingPathComponent("layer\(i)_k_bias.f32")
+                if FileManager.default.fileExists(atPath: kbPath.path) {
+                    let kb = try loadF32(kbPath, count: HD)
+                    for j in 0..<k.count { k[j] += kb[j % HD] }
+                }
+                let vbPath = weightsDir.appendingPathComponent("layer\(i)_v_bias.f32")
+                if FileManager.default.fileExists(atPath: vbPath.path) {
+                    let vb = try loadF32(vbPath, count: HD)
+                    for j in 0..<v.count { v[j] += vb[j % HD] }
+                }
             }
 
             // Vectorized transpose: (S_enc, H, D) -> (H, S_enc, D) via memcpy per row.
             let layerOff = i * H * S_ENC_MAX * D
-            // ponytail: direct element copy instead of 4,992 memcpy(144) syscalls per layer.
-            // D=36 — small enough for inline vectorized copy, no kernel transition.
+            // ponytail: direct element copy.
             // Layout: gemm output is [S_enc, HD] where HD=H*D. Target is [H, S_enc, D].
             // Copy H heads × S_enc frames × D dims with correct strides.
             k.withUnsafeMutableBufferPointer { kBuf in
@@ -512,7 +596,7 @@ public final class MoonshineEngine: @unchecked Sendable {
         }
 
         for s in 0..<S_ENC_MAX {
-            mPtr[s] = s < S_enc ? 0.0 : -10000.0
+            mPtr[s] = s < actualEncFrames ? 0.0 : -10000.0
         }
 
         return (crossK, crossV, crossMask)
@@ -535,28 +619,27 @@ public final class MoonshineEngine: @unchecked Sendable {
         let state = decoder.makeState()
         dbg("state created")
 
-        // cross_k/v/mask are state variables, not model inputs — write to state once before the loop.
-        // IMPORTANT: model state arrays use float16, but crossK/crossV/crossMask are float32.
-        // Convert via vImage before writing, otherwise memcpy writes 2x the expected size → SIGSEGV.
+        // Convert cross-KV to fp16 (needed for both stateful and nonstateful paths).
         guard let crossK16 = f32to16(crossK),
               let crossV16 = f32to16(crossV),
               let crossMask16 = f32to16(crossMask) else {
-            throw MoonshineError.inferenceFailed("float32→float16 conversion failed")
+            throw MoonshineError.inferenceFailed("float32->float16 conversion failed")
         }
         dbg("f32to16 complete — cross_k=\(crossK16.count) cross_v=\(crossV16.count) cross_mask=\(crossMask16.count)")
 
-        state.withMultiArray(for: "cross_k") { ml in
-            memcpy(ml.dataPointer, crossK16.dataPointer, ml.count * 2)
+        // Write cross-KV: to state if stateful decoder, as inputs if nonstateful.
+        if useStateful {
+            state.withMultiArray(for: "cross_k") { ml in
+                memcpy(ml.dataPointer, crossK16.dataPointer, ml.count * 2)
+            }
+            state.withMultiArray(for: "cross_v") { ml in
+                memcpy(ml.dataPointer, crossV16.dataPointer, ml.count * 2)
+            }
+            state.withMultiArray(for: "cross_mask") { ml in
+                memcpy(ml.dataPointer, crossMask16.dataPointer, ml.count * 2)
+            }
+            dbg("cross-KV written to state")
         }
-        dbg("cross_k write complete")
-        state.withMultiArray(for: "cross_v") { ml in
-            memcpy(ml.dataPointer, crossV16.dataPointer, ml.count * 2)
-        }
-        dbg("cross_v write complete")
-        state.withMultiArray(for: "cross_mask") { ml in
-            memcpy(ml.dataPointer, crossMask16.dataPointer, ml.count * 2)
-        }
-        dbg("state writes complete")
 
         let BOS: Int32 = 1
         let EOS: Int32 = 2
@@ -588,13 +671,20 @@ public final class MoonshineEngine: @unchecked Sendable {
             // Update attn_mask: unlock current position.
             if step > 0 { attnPtr[step] = 0.0 }
 
-            let input = try MLDictionaryFeatureProvider(dictionary: [
+            // Build input dict — omit cross-KV if stateful (already in state).
+            var inputDict: [String: Any] = [
                 "input_ids": inputIds,
                 "attn_mask": attnMask,
                 "cos": cosML,
                 "sin": sinML,
                 "write_onehot": onehot,
-            ])
+            ]
+            if !useStateful {
+                inputDict["cross_k"] = crossK16
+                inputDict["cross_v"] = crossV16
+                inputDict["cross_mask"] = crossMask16
+            }
+            let input = try MLDictionaryFeatureProvider(dictionary: inputDict)
 
             let pred = try decoder.prediction(from: input, using: state)
 

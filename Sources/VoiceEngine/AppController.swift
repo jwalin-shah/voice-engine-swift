@@ -196,7 +196,8 @@ public final class AppController {
                 let commandResult: TranscriptResult = try await Task.detached(priority: .userInitiated) { [engine, bundleID, cs, rawFloats] in
                     let startTime = CFAbsoluteTimeGetCurrent()
                     let audioSecs = Double(rawFloats.count) / 16000.0
-                    var text = try engine.transcribeLong(rawAudio: rawFloats)
+                    var timing: TranscribeTiming? = nil
+                    var text = try engine.transcribeLong(rawAudio: rawFloats, timing: &timing)
                     if cs.mode != .disabled {
                         text = await cs.clean(text)
                     }
