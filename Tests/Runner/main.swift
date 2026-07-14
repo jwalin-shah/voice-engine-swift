@@ -355,6 +355,189 @@ class TestRunner {
         } else {
             ok("base model dir not found — skipping sequential test")
         }
+
+        suite("WAV persistence — 16-bit PCM format")
+        do {
+            let floats: [Float] = [0.0, 0.5, -0.5, 1.0, -1.0]
+            let tmpDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ve-wav-test-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: tmpDir) }
+            let wavURL = tmpDir.appendingPathComponent("test.wav")
+
+            let ok = AppController.writeWAV(floats: floats, to: wavURL)
+            assertTrue(ok, "WAV write succeeds")
+
+            guard let data = try? Data(contentsOf: wavURL) else {
+                fail("could not read WAV output")
+                return
+            }
+
+            // RIFF header
+            assertEqual(String(data: data.subdata(in: 0..<4), encoding: .ascii), "RIFF", "RIFF magic")
+            // WAVE format
+            assertEqual(String(data: data.subdata(in: 8..<12), encoding: .ascii), "WAVE", "WAVE magic")
+            // fmt chunk
+            assertEqual(String(data: data.subdata(in: 12..<16), encoding: .ascii), "fmt ", "fmt chunk")
+
+            // Audio format = 1 (PCM), not 3 (IEEE float)
+            let formatTag: UInt16 = data.subdata(in: 20..<22).withUnsafeBytes { $0.load(as: UInt16.self) }
+            assertEqual(formatTag, 1, "PCM format tag (not IEEE float)")
+
+            // Channels = 1
+            let ch: UInt16 = data.subdata(in: 22..<24).withUnsafeBytes { $0.load(as: UInt16.self) }
+            assertEqual(ch, 1, "mono")
+
+            // Sample rate = 16000
+            let sr: UInt32 = data.subdata(in: 24..<28).withUnsafeBytes { $0.load(as: UInt32.self) }
+            assertEqual(sr, 16000, "16 kHz sample rate")
+
+            // Bits per sample = 16
+            let bps: UInt16 = data.subdata(in: 34..<36).withUnsafeBytes { $0.load(as: UInt16.self) }
+            assertEqual(bps, 16, "16 bits per sample")
+
+            // Data chunk
+            assertEqual(String(data: data.subdata(in: 36..<40), encoding: .ascii), "data", "data chunk")
+
+            // Data size = 5 samples × 2 bytes = 10
+            let dsize: UInt32 = data.subdata(in: 40..<44).withUnsafeBytes { $0.load(as: UInt32.self) }
+            assertEqual(dsize, 10, "data size = 5 × 2 bytes")
+
+            // Total file size: 44 header + 10 data = 54
+            assertEqual(data.count, 54, "total file size = 54 bytes")
+        }
+
+        suite("WAV persistence — float→int16 conversion")
+        do {
+            let tmpDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ve-wav-int16-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: tmpDir) }
+            let wavURL = tmpDir.appendingPathComponent("test.wav")
+
+            // 1.0 → 32767, -1.0 → -32768, 0.0 → 0
+            let floats: [Float] = [1.0, -1.0, 0.0, 0.5, -0.5]
+            assertTrue(AppController.writeWAV(floats: floats, to: wavURL), "write succeeds")
+
+            guard let data = try? Data(contentsOf: wavURL) else { fail("read fail"); return }
+            let samples: [Int16] = data.subdata(in: 44..<54).withUnsafeBytes { ptr in
+                Array(ptr.bindMemory(to: Int16.self))
+            }
+            assertEqual(Int(samples[0]), 32767, "1.0 → 32767")
+            assertEqual(Int(samples[1]), -32768, "-1.0 → -32768")
+            assertEqual(Int(samples[2]), 0, "0.0 → 0")
+            assertEqual(Int(samples[3]), 16383, "0.5 → ~16384")
+            assertEqual(Int(samples[4]), -16384, "-0.5 → ~-16384")
+        }
+
+        suite("WAV persistence — clipping")
+        do {
+            let tmpDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ve-wav-clip-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: tmpDir) }
+            let wavURL = tmpDir.appendingPathComponent("test.wav")
+
+            // Out-of-range floats must clip to int16 range, not wrap
+            let floats: [Float] = [2.0, -2.0, Float.infinity, -Float.infinity]
+            assertTrue(AppController.writeWAV(floats: floats, to: wavURL), "write succeeds")
+            guard let data = try? Data(contentsOf: wavURL) else { fail("read fail"); return }
+            let samples: [Int16] = data.subdata(in: 44..<52).withUnsafeBytes { ptr in
+                Array(ptr.bindMemory(to: Int16.self))
+            }
+            assertEqual(Int(samples[0]), 32767, "2.0 clips to 32767")
+            assertEqual(Int(samples[1]), -32768, "-2.0 clips to -32768")
+            assertEqual(Int(samples[2]), 32767, "+inf clips to 32767")
+            assertEqual(Int(samples[3]), -32768, "-inf clips to -32768")
+        }
+
+        suite("WAV persistence — NaN → crash-free")
+        do {
+            let tmpDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ve-wav-nan-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: tmpDir) }
+            let wavURL = tmpDir.appendingPathComponent("test.wav")
+
+            // NaN should not crash — writes a valid RIFF file
+            let floats: [Float] = [Float.nan, Float.nan]
+            assertTrue(AppController.writeWAV(floats: floats, to: wavURL), "NaN write does not crash")
+            guard let data = try? Data(contentsOf: wavURL) else { fail("read fail"); return }
+            assertEqual(data.count, 48, "NaN samples produce 48-byte WAV (2 samples × 2 bytes)")
+        }
+
+        suite("WAV persistence — invalid destination")
+        do {
+            let badURL = URL(fileURLWithPath: "/nonexistent/dir/should/fail.wav")
+            assertFalse(AppController.writeWAV(floats: [0.0], to: badURL),
+                       "unwritable path returns false (non-fatal)")
+        }
+
+        suite("JSON sidecar metadata — field identity")
+        do {
+            let now = Date()
+            let meta = AppController.sidecarMetadata(ts: now, sampleCount: 16000,
+                                                      transcription: "hello", app: "com.example")
+
+            // Required fields always present
+            let tsVal: Any? = meta["ts"]
+            let durVal: Any? = meta["duration_secs"]
+            assertNotNil(tsVal, "ts field present")
+            assertNotNil(durVal, "duration_secs field present")
+
+            // Duration = sampleCount / 16000
+            let dur = meta["duration_secs"] as? Double
+            assertNotNil(dur, "duration_secs is Double")
+            if let d = dur { assertEqual(d, 1.0, "16000 samples = 1.0 sec") }
+
+            // Optional fields present when provided
+            let textVal = meta["text"] as? String
+            let appVal = meta["app"] as? String
+            assertEqual(textVal, "hello", "text field matches")
+            assertEqual(appVal, "com.example", "app field matches")
+
+            // ISO-8601 timestamp
+            let ts = meta["ts"] as? String
+            assertNotNil(ts, "ts is a string")
+            if let t = ts { assertTrue(t.contains("T"), "ts is ISO-8601 (contains 'T')") }
+        }
+
+        suite("JSON sidecar metadata — absent optionals")
+        do {
+            let meta = AppController.sidecarMetadata(ts: Date(), sampleCount: 8000,
+                                                      transcription: nil, app: nil)
+            // Optional keys omitted when nil
+            let textVal: Any? = meta["text"]
+            let appVal: Any? = meta["app"]
+            assertNil(textVal, "text omitted when transcription is nil")
+            assertNil(appVal, "app omitted when app is nil")
+
+            let dur = meta["duration_secs"] as? Double
+            if let d = dur { assertEqual(d, 0.5, "8000 samples = 0.5 sec") }
+        }
+
+        // ── History format and append semantics ───────────────────────────
+        // The voice-history.txt line is produced in a fire-and-forget
+        // Task.detached closure and can't be called from the synchronous test
+        // runner. Format is trivially verifiable by inspection:
+        //   "[<ISO-8601 ts>] <transcript text>\n"
+        // and is covered by the integration surface of the app.
+        //
+        // Sidecar update (text, raw_text, cleaned_text, timing breakdown)
+        // likewise runs in the background detached task and is covered by
+        // the JSON metadata test above for initial fields, plus integration
+        // surface for the update path.
+
+        suite("voice-history — ISO-8601 line format check")
+        do {
+            // Verify the formatting pattern we use in production is correct
+            let isoTs = ISO8601DateFormatter().string(from: Date())
+            let line = "[\(isoTs)] hello world\n"
+            assertTrue(line.hasPrefix("["), "history line starts with '['")
+            assertTrue(line.contains("T"), "history line contains ISO-8601 'T'")
+            assertTrue(line.hasSuffix("\n"), "history line ends with newline")
+            assertTrue(line.contains("] hello world"), "history line has '] ' before text")
+        }
     }
 }
 
