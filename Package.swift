@@ -12,6 +12,7 @@ let package = Package(
         .target(
             name: "VoiceEngine",
             path: "Sources/VoiceEngine",
+            exclude: ["ParakeetMLX"],
             cSettings: [.define("ACCELERATE_NEW_LAPACK"), .define("ACCELERATE_LAPACK_ILP64")],
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("AVFoundation"), .linkedFramework("CoreML"), .linkedFramework("Accelerate"), .linkedFramework("IOKit"), .linkedFramework("CoreAudio")]
