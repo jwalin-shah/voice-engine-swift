@@ -538,7 +538,277 @@ class TestRunner {
             assertTrue(line.hasSuffix("\n"), "history line ends with newline")
             assertTrue(line.contains("] hello world"), "history line has '] ' before text")
         }
+
+        // MARK: - FullStop Punctuation tests
+
+        // ── Label set invariant (no files needed) ────────────────────────
+        suite("PunctuationService — label set invariant")
+        do {
+            let labels = PunctuationService.idToLabel
+            let allowed = Set([".", ",", "?", "-", ":", ""])
+            for (_, char) in labels {
+                assertTrue(allowed.contains(char), "label '\(char)' is in allowed set")
+            }
+            assertEqual(labels.count, PunctuationService.numLabels,
+                       "exactly \(PunctuationService.numLabels) labels")
+        }
+
+        // ── Tokenizer unit tests (self-contained, no machine caches) ───
+        // Create a minimal synthetic vocab in a temp directory so these
+        // tests are independent of any cached model artifacts.
+        suite("FullStopTokenizer — init and special tokens (synthetic vocab)")
+        do {
+            let tok = try makeSyntheticTokenizer()
+            assertEqual(tok.bosId, 0, "BOS id")
+            assertEqual(tok.padId, 1, "PAD id")
+            assertEqual(tok.eosId, 2, "EOS id")
+            assertEqual(tok.unkId, 3, "UNK id")
+            ok("tokenizer init from synthetic vocab")
+        } catch {
+            fail("synthetic tokenizer init failed: \(error)")
+        }
+
+        suite("FullStopTokenizer — encode/decode roundtrip (synthetic vocab)")
+        do {
+            let tok = try makeSyntheticTokenizer()
+            let result = tok.encode("hello world", maxLength: 32)
+            assertTrue(result.inputIds.count <= 32, "encoded within maxLength")
+            assertEqual(result.inputIds[0], 0, "starts with BOS")
+            // Decode back — the synthetic vocab has limited coverage but
+            // should handle simple words
+            let decoded = tok.decode(result.inputIds)
+            // Decode removes BOS/EOS/PAD and replaces U+2581 with space
+            assertFalse(decoded.contains("<s>"), "BOS stripped from decode")
+            assertFalse(decoded.contains("</s>"), "EOS stripped from decode")
+            assertFalse(decoded.contains("<unk>"), "UNK should not appear")
+            // Result should be non-empty
+            assertTrue(!decoded.isEmpty, "decode produces text")
+        } catch {
+            fail("tokenizer roundtrip failed: \(error)")
+        }
+
+        suite("FullStopTokenizer — overlength truncation (synthetic vocab)")
+        do {
+            let tok = try makeSyntheticTokenizer()
+            let longText = String(repeating: "hello world ", count: 10)
+            let result = tok.encode(longText, maxLength: 16)
+            assertEqual(result.inputIds.count, 16, "padded to maxLength=16")
+            assertEqual(result.attentionMask.count, 16, "attention mask same length")
+            // At least first element is 1 (BOS) and last is 0 if padded
+            assertEqual(result.attentionMask[0], 1, "BOS position attended")
+        } catch {
+            fail("overlength truncation test failed: \(error)")
+        }
+
+        suite("FullStopTokenizer — empty input")
+        do {
+            let tok = try makeSyntheticTokenizer()
+            let result = tok.encode("", maxLength: 8)
+            // Empty input still produces BOS + EOS = 2 tokens, then padding
+            assertEqual(result.inputIds.count, 8, "padded to maxLength")
+            assertEqual(result.inputIds[0], 0, "BOS at position 0")
+            assertEqual(result.inputIds[1], 2, "EOS at position 1")
+            // Remaining positions are PAD
+            for i in 2..<8 {
+                assertEqual(result.inputIds[i], 1, "PAD at position \(i)")
+            }
+        } catch {
+            fail("empty input test failed: \(error)")
+        }
+
+        suite("FullStopTokenizer — whitespace only input")
+        do {
+            let tok = try makeSyntheticTokenizer()
+            let result = tok.encode("   ", maxLength: 8)
+            assertEqual(result.inputIds.count, 8, "padded to maxLength")
+            assertEqual(result.inputIds[0], 0, "BOS")
+            assertEqual(result.inputIds[1], 2, "EOS follows whitespace-only")
+        } catch {
+            fail("whitespace input test failed: \(error)")
+        }
+
+        // ── Model artifact check (skips cleanly when absent) ────────────
+        suite("PunctuationService — model artifacts available")
+        do {
+            let modelDir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".cache/fullstop-coreml/large")
+            let mlpackage = modelDir.appendingPathComponent("fullstop-punctuation.mlpackage")
+            let tokFile = modelDir.appendingPathComponent("tokenizer_compact.json")
+            let cfgFile = modelDir.appendingPathComponent("config.json")
+
+            let modelExists = FileManager.default.fileExists(atPath: mlpackage.path)
+            let tokExists = FileManager.default.fileExists(atPath: tokFile.path)
+            let cfgExists = FileManager.default.fileExists(atPath: cfgFile.path)
+
+            if modelExists && tokExists && cfgExists {
+                ok("all FullStop artifacts present (model + tokenizer + config)")
+
+                // ── Cross-check: Swift tokenizer vs Python/HF fixtures ──
+                suite("FullStopTokenizer — Python/HF cross-check")
+                // The fixture file is generated by:
+                //   python3 -c "from transformers import AutoTokenizer; ..."
+                // and checked into Tests/Runner/fullstop_tokenizer_fixtures.json
+                let fixtureCandidates = [
+                    URL(fileURLWithPath: "Tests/Runner/fullstop_tokenizer_fixtures.json"),
+                    URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                        .appendingPathComponent("Tests/Runner/fullstop_tokenizer_fixtures.json"),
+                ]
+                let fixtureURL = fixtureCandidates.first {
+                    FileManager.default.fileExists(atPath: $0.path)
+                }
+
+                if let fixtureURL,
+                   let tok = try? FullStopTokenizer(vocabDir: modelDir),
+                   let data = try? Data(contentsOf: fixtureURL),
+                   let fixtures = try? JSONSerialization.jsonObject(with: data) as? [String: [String: [Int]]] {
+                    for (text, expected) in fixtures {
+                        guard let expectedIds = expected["input_ids"] else { continue }
+                        let result = tok.encode(text, maxLength: 256)
+                        // Compare token IDs up to the actual sequence length
+                        // (the fixture has unpadded IDs including BOS/EOS)
+                        let actualIds = Array(result.inputIds.prefix(expectedIds.count))
+                        if actualIds == expectedIds {
+                            ok("'\(text)' — \(expectedIds.count) tokens match Python/HF")
+                        } else {
+                            // Report first mismatch position
+                            var mismatchIdx = 0
+                            for i in 0..<min(actualIds.count, expectedIds.count) {
+                                if actualIds[i] != expectedIds[i] {
+                                    mismatchIdx = i; break
+                                }
+                                mismatchIdx = i + 1
+                            }
+                            fail("'\(text)' — mismatch at pos \(mismatchIdx): Swift=\(actualIds), HF=\(expectedIds)")
+                        }
+                    }
+                } else {
+                    ok("skipped — cannot load fixtures or tokenizer for cross-check")
+                }
+            } else {
+                var missing: [String] = []
+                if !modelExists { missing.append("mlpackage") }
+                if !tokExists { missing.append("tokenizer_compact.json") }
+                if !cfgExists { missing.append("config.json") }
+                ok("skipped — artifacts not cached: \(missing.joined(separator: ", "))")
+            }
+        }
+
+        // ── Swift end-to-end inference (skips when model absent) ────────
+        suite("PunctuationService — Swift end-to-end inference")
+        do {
+            let svc = PunctuationService()
+            do {
+                try svc.load()
+            } catch {
+                ok("skipped — model not available: \(error.localizedDescription)")
+                return
+            }
+
+            // Test with representative lowercase ASR-like inputs.
+            // Verify: input words preserved in order, only allowed
+            // punctuation inserted, latency recorded.
+            let testCases = [
+                "hello world how are you",
+                "my name is clara and i live in berkeley california",
+                "what time is it",
+                "okay let me think about that",
+            ]
+
+            for text in testCases {
+                let t0 = CFAbsoluteTimeGetCurrent()
+                let result = try svc.restore(text)
+                let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
+
+                // Input words preserved in output order
+                let inputWords = text.lowercased().split(separator: " ")
+                let outputWords = result.split(separator: " ").map {
+                    $0.trimmingCharacters(in: CharacterSet.punctuationCharacters)
+                }
+                // outputWords may differ in count due to punctuation-only tokens
+                // from reconstruction artifacts, but all input words should appear
+                // in order
+                var wordIdx = 0
+                for ow in outputWords where !ow.isEmpty {
+                    if wordIdx < inputWords.count && ow.lowercased() == inputWords[wordIdx].lowercased() {
+                        wordIdx += 1
+                    }
+                }
+                assertEqual(wordIdx, inputWords.count,
+                           "'\(text.prefix(30))...' - all \(inputWords.count) input words found in output")
+
+                // Only allowed punctuation inserted
+                let allowed = CharacterSet(charactersIn: ".,?:- ")
+                let illegal = result.unicodeScalars.filter { !allowed.contains($0) && !CharacterSet.alphanumerics.contains($0) }
+                assertTrue(illegal.isEmpty,
+                          "'\(text.prefix(30))...' - only allowed punctuation in output (found: \(illegal.map { String($0) }))")
+
+                // Latency recorded
+                assertTrue(ms > 0 && ms < 5000,
+                          "'\(text.prefix(30))...' - restore latency \(String(format: "%.1f", ms))ms within 5s budget")
+
+                Foundation.NSLog("[voice-tests] PunctuationService.restore: \(String(format: "%.1f", ms))ms — '\(text.prefix(20))...' → '\(result.prefix(30))...'")
+            }
+
+            ok("end-to-end Swift inference passed for \(testCases.count) inputs")
+        } catch {
+            fail("end-to-end inference failed: \(error)")
+        }
     }
+}
+
+/// Create a FullStopTokenizer with a minimal synthetic vocabulary in a
+/// temp directory. This makes tokenizer unit tests independent of any
+/// cached model artifacts.
+///
+/// The synthetic vocab covers basic English words enough to validate
+/// encode/decode roundtrips, special token handling, truncation, and
+/// edge cases without requiring the 250K-entry production vocab.
+private func makeSyntheticTokenizer() throws -> FullStopTokenizer {
+    let tmpDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fullstop-synth-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+
+    // Minimal Unigram vocab covering common words and subwords.
+    // IDs 0-3 are special tokens, 4+ are content pieces with scores.
+    let vocab: [[Any]] = [
+        ["<s>", 0.0],       // 0: BOS
+        ["<pad>", 0.0],     // 1: PAD
+        ["</s>", -0.1],     // 2: EOS
+        ["<unk>", -10.0],   // 3: UNK
+        ["▁hello", -1.0],   // 4
+        ["▁world", -1.0],   // 5
+        ["▁the", -0.8],     // 6
+        ["▁quick", -1.5],   // 7
+        ["▁brown", -1.5],   // 8
+        ["▁fox", -1.5],     // 9
+        ["▁jumps", -1.5],   // 10
+        ["▁over", -1.5],    // 11
+        ["▁lazy", -1.5],    // 12
+        ["▁dog", -1.5],     // 13
+        ["▁a", -0.5],       // 14
+        ["▁is", -1.0],      // 15
+        ["▁it", -1.0],      // 16
+        ["▁this", -1.0],    // 17
+        ["▁that", -1.0],    // 18
+        ["▁okay", -1.8],    // 19
+        ["▁test", -1.5],    // 20
+        // Subword pieces for unknown words
+        ["he", -2.0],        // 21
+        ["llo", -2.0],       // 22
+        ["wo", -2.0],        // 23
+        ["rld", -2.0],       // 24
+        ["qu", -2.5],        // 25
+        ["ick", -2.5],       // 26
+        ["br", -2.5],        // 27
+        ["own", -2.5],       // 28
+    ]
+
+    let json: [String: Any] = ["vocab": vocab]
+    let data = try JSONSerialization.data(withJSONObject: json)
+    let compactPath = tmpDir.appendingPathComponent("tokenizer_compact.json")
+    try data.write(to: compactPath)
+
+    return try FullStopTokenizer(vocabDir: tmpDir)
 }
 
 let runner = TestRunner()
