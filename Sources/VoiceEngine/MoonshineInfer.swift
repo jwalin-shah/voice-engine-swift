@@ -51,6 +51,15 @@ public enum MoonshineError: LocalizedError {
     }
 }
 
+// MARK: - Per-stage timing
+
+public struct TranscribeTiming {
+    public var encoderMs: Double = 0
+    public var crossKVMs: Double = 0
+    public var decoderMs: Double = 0
+    public var totalMs: Double = 0
+}
+
 // MARK: - MoonshineEngine
 
 public final class MoonshineEngine: @unchecked Sendable {
@@ -192,7 +201,7 @@ public final class MoonshineEngine: @unchecked Sendable {
 
     // MARK: - Transcribe (single 10s chunk)
 
-    public func transcribe(rawAudio: [Float]) throws -> String {
+    public func transcribe(rawAudio: [Float], timing: inout TranscribeTiming?) throws -> String {
         guard ready, let arch, let encoder, let decoder else {
             throw MoonshineError.notLoaded
         }
@@ -203,6 +212,9 @@ public final class MoonshineEngine: @unchecked Sendable {
         if maxSample < 0.001 {
             Foundation.NSLog("[MoonshineEngine] WARNING: near-silent audio (max=\(maxSample))")
         }
+
+        timing?.totalMs = 0  // reset; will set at end
+        let tTotal = CFAbsoluteTimeGetCurrent()
 
         // 1. Pad to nearest bucket (minimizes padding noise in streaming).
         var audio = rawAudio
@@ -217,9 +229,11 @@ public final class MoonshineEngine: @unchecked Sendable {
         let audioML = try makeMLArray(audio, shape: [1, NSNumber(value: maxSamples)])
         let encInName = encoder.modelDescription.inputDescriptionsByName.first!.key
         let encOutName = encoder.modelDescription.outputDescriptionsByName.first!.key
+        let tEnc = CFAbsoluteTimeGetCurrent()
         let encOut = try encoder.prediction(from: try MLDictionaryFeatureProvider(dictionary: [
             encInName: audioML
         ])).featureValue(for: encOutName)!.multiArrayValue!
+        let encoderMs = (CFAbsoluteTimeGetCurrent() - tEnc) * 1000
 
         let S_enc = encOut.shape[1].intValue
         guard S_enc <= arch.S_ENC_MAX else {
@@ -228,38 +242,37 @@ public final class MoonshineEngine: @unchecked Sendable {
             )
         }
         let hidden = mlToFloats(encOut)
-        let audioRMS = sqrt(rawAudio.map { $0*$0 }.reduce(0, +) / Float(rawAudio.count))
-        let hiddenSample = hidden.prefix(4).map { String(format: "%.4f", $0) }.joined(separator: ",")
-        NSLog("[MoonshineEngine] encoder: audioRMS=%.4f S_enc=%d hidden[0..3]=%@", audioRMS, S_enc, hiddenSample)
 
         // 3. Build cross-KV via Accelerate gemm.
         let weightsDir = modelDir.appendingPathComponent("weights")
+        let tCrossKV = CFAbsoluteTimeGetCurrent()
         let (crossK, crossV, crossMask) = try buildCrossKV(
             hidden: hidden, S_enc: S_enc, arch: arch, weightsDir)
-        // raw write markers that bypass heap/libc buffering
-        dbg("SYNC-A after buildCrossKV")
-        let ckPtr = crossK.dataPointer.bindMemory(to: Float.self, capacity: 4)
-        dbg("SYNC-B after bindMemory")
-        let ckSample = (0..<4).map { String(format: "%.4f", ckPtr[$0]) }.joined(separator: ",")
-        dbg("SYNC-C after ckSample=\(ckSample)")
-        NSLog("[MoonshineEngine] crossK[0..3]=%@", ckSample)
-        dbg("SYNC-D after NSLog")
+        let crossKVMs = (CFAbsoluteTimeGetCurrent() - tCrossKV) * 1000
 
         // 4. Decoder loop.
-        dbg("SYNC-E BEFORE decodeLoop")
-        return try decodeLoop(crossK: crossK, crossV: crossV, crossMask: crossMask,
+        let tDecoder = CFAbsoluteTimeGetCurrent()
+        let result = try decodeLoop(crossK: crossK, crossV: crossV, crossMask: crossMask,
                                S_enc: S_enc, arch: arch, decoder: decoder,
                                weightsDir: weightsDir)
+        let decoderMs = (CFAbsoluteTimeGetCurrent() - tDecoder) * 1000
+
+        timing?.encoderMs = encoderMs
+        timing?.crossKVMs = crossKVMs
+        timing?.decoderMs = decoderMs
+        timing?.totalMs = (CFAbsoluteTimeGetCurrent() - tTotal) * 1000
+
+        return result
     }
 
     // MARK: - TranscribeLong (handles arbitrary length via chunking)
 
-    public func transcribeLong(rawAudio: [Float]) throws -> String {
+    public func transcribeLong(rawAudio: [Float], timing: inout TranscribeTiming?) throws -> String {
         guard !rawAudio.isEmpty else { throw MoonshineError.emptyAudio }
 
         // If short enough, do single pass
         if rawAudio.count <= C.chunkSamples {
-            return try transcribe(rawAudio: rawAudio)
+            return try transcribe(rawAudio: rawAudio, timing: &timing)
         }
 
         var fullText = ""
@@ -270,7 +283,8 @@ public final class MoonshineEngine: @unchecked Sendable {
             let chunkEnd = range.upperBound
             let chunk = Array(rawAudio[chunkStart..<chunkEnd])
 
-            let text = try transcribe(rawAudio: chunk)
+            var chunkTiming: TranscribeTiming? = nil
+            let text = try transcribe(rawAudio: chunk, timing: &chunkTiming)
 
             // Dedup overlap with previous chunk
             if !prevText.isEmpty {
@@ -370,7 +384,6 @@ public final class MoonshineEngine: @unchecked Sendable {
         let ckBase = crossK.dataPointer.bindMemory(to: Float.self, capacity: NL * H * S_ENC_MAX * D)
         let cvBase = crossV.dataPointer.bindMemory(to: Float.self, capacity: NL * H * S_ENC_MAX * D)
         let mPtr = crossMask.dataPointer.bindMemory(to: Float.self, capacity: S_ENC_MAX)
-        let nBytes = D * MemoryLayout<Float>.stride
 
         for i in 0..<NL {
             let kw = kWeights[i]
@@ -384,17 +397,34 @@ public final class MoonshineEngine: @unchecked Sendable {
             for j in 0..<v.count { v[j] += vbi[j % HD] }
 
             let layerOff = i * H * S_ENC_MAX * D
+            // ponytail: direct element copy instead of 4,992 memcpy(144) syscalls per layer.
+            // D=36 — small enough for inline vectorized copy, no kernel transition.
+            // Layout: gemm output is [S_enc, HD] where HD=H*D. Target is [H, S_enc, D].
+            // Copy H heads × S_enc frames × D dims with correct strides.
             k.withUnsafeMutableBufferPointer { kBuf in
-                v.withUnsafeMutableBufferPointer { vBuf in
-                    for h in 0..<H {
-                        let rowOff = layerOff + h * S_ENC_MAX * D
-                        for s in 0..<S_enc {
-                            let srcOff = s * HD + h * D
-                            let dstOff = rowOff + s * D
-                            memcpy(ckBase + dstOff, kBuf.baseAddress! + srcOff, nBytes)
-                            memcpy(cvBase + dstOff, vBuf.baseAddress! + srcOff, nBytes)
-                        }
+                let kSrc = kBuf.baseAddress!
+                var kDst = ckBase + layerOff
+                for h in 0..<H {
+                    var src = kSrc + h * D
+                    for _ in 0..<S_enc {
+                        kDst.update(from: src, count: D)
+                        kDst += D
+                        src += HD
                     }
+                    kDst += (S_ENC_MAX - S_enc) * D
+                }
+            }
+            v.withUnsafeMutableBufferPointer { vBuf in
+                let vSrc = vBuf.baseAddress!
+                var vDst = cvBase + layerOff
+                for h in 0..<H {
+                    var src = vSrc + h * D
+                    for _ in 0..<S_enc {
+                        vDst.update(from: src, count: D)
+                        vDst += D
+                        src += HD
+                    }
+                    vDst += (S_ENC_MAX - S_enc) * D
                 }
             }
         }
@@ -426,7 +456,6 @@ public final class MoonshineEngine: @unchecked Sendable {
         let ckBase = crossK.dataPointer.bindMemory(to: Float.self, capacity: NL * H * S_ENC_MAX * D)
         let cvBase = crossV.dataPointer.bindMemory(to: Float.self, capacity: NL * H * S_ENC_MAX * D)
         let mPtr = crossMask.dataPointer.bindMemory(to: Float.self, capacity: S_ENC_MAX)
-        let nBytes = D * MemoryLayout<Float>.stride
 
         for i in 0..<NL {
             let kw = try loadF32(weightsDir.appendingPathComponent("layer\(i)_k_weight.f32"),
@@ -450,17 +479,34 @@ public final class MoonshineEngine: @unchecked Sendable {
 
             // Vectorized transpose: (S_enc, H, D) -> (H, S_enc, D) via memcpy per row.
             let layerOff = i * H * S_ENC_MAX * D
+            // ponytail: direct element copy instead of 4,992 memcpy(144) syscalls per layer.
+            // D=36 — small enough for inline vectorized copy, no kernel transition.
+            // Layout: gemm output is [S_enc, HD] where HD=H*D. Target is [H, S_enc, D].
+            // Copy H heads × S_enc frames × D dims with correct strides.
             k.withUnsafeMutableBufferPointer { kBuf in
-                v.withUnsafeMutableBufferPointer { vBuf in
-                    for h in 0..<H {
-                        let rowOff = layerOff + h * S_ENC_MAX * D
-                        for s in 0..<S_enc {
-                            let srcOff = s * HD + h * D
-                            let dstOff = rowOff + s * D
-                            memcpy(ckBase + dstOff, kBuf.baseAddress! + srcOff, nBytes)
-                            memcpy(cvBase + dstOff, vBuf.baseAddress! + srcOff, nBytes)
-                        }
+                let kSrc = kBuf.baseAddress!
+                var kDst = ckBase + layerOff
+                for h in 0..<H {
+                    var src = kSrc + h * D
+                    for _ in 0..<S_enc {
+                        kDst.update(from: src, count: D)
+                        kDst += D
+                        src += HD
                     }
+                    kDst += (S_ENC_MAX - S_enc) * D
+                }
+            }
+            v.withUnsafeMutableBufferPointer { vBuf in
+                let vSrc = vBuf.baseAddress!
+                var vDst = cvBase + layerOff
+                for h in 0..<H {
+                    var src = vSrc + h * D
+                    for _ in 0..<S_enc {
+                        vDst.update(from: src, count: D)
+                        vDst += D
+                        src += HD
+                    }
+                    vDst += (S_ENC_MAX - S_enc) * D
                 }
             }
         }
