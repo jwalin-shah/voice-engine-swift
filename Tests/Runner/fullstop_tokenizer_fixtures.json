@@ -1,0 +1,112 @@
+{
+  "hello world": {
+    "input_ids": [
+      0,
+      33600,
+      31,
+      8999,
+      2
+    ],
+    "attention_mask": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "how are you": {
+    "input_ids": [
+      0,
+      3642,
+      621,
+      398,
+      2
+    ],
+    "attention_mask": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "what time is it": {
+    "input_ids": [
+      0,
+      2367,
+      1733,
+      83,
+      442,
+      2
+    ],
+    "attention_mask": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "my name is clara": {
+    "input_ids": [
+      0,
+      759,
+      9351,
+      83,
+      40361,
+      2
+    ],
+    "attention_mask": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "okay let me think about that": {
+    "input_ids": [
+      0,
+      68403,
+      2633,
+      163,
+      5351,
+      1672,
+      450,
+      2
+    ],
+    "attention_mask": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "the quick brown fox": {
+    "input_ids": [
+      0,
+      70,
+      63773,
+      119455,
+      6,
+      147797,
+      2
+    ],
+    "attention_mask": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  }
+}

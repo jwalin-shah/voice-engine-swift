@@ -1,0 +1,38 @@
+{
+  "model": "oliverguhr/fullstop-punctuation-multilang-large",
+  "snapshot": "345e80adc07e761d3a35feafd20f2f44a151f453",
+  "model_size": "large",
+  "model_size_note": "provisional-tracer — Large (558M) chosen because cached; Base (277M) should be evaluated",
+  "num_labels": 6,
+  "max_seq_len": 256,
+  "labels": {
+    "0": "O (no punctuation)",
+    "1": ".",
+    "2": ",",
+    "3": "?",
+    "4": "-",
+    "5": ":"
+  },
+  "tokenizer": {
+    "type": "XLM-RoBERTa Unigram SentencePiece",
+    "vocab_size": 250002,
+    "special_tokens": {
+      "bos": 0,
+      "pad": 1,
+      "eos": 2,
+      "unk": 3
+    },
+    "word_boundary": "U+2581 (lower one eighth block)"
+  },
+  "conversion": {
+    "tool": "coremltools",
+    "compute_units": "CPU_AND_NE",
+    "convert_to": "mlprogram",
+    "deployment_target": "macOS15",
+    "notes": "CoreML mlpackage directory metadata may not be bit-reproducible; weight-file hashes in runtime manifest are the stable identity."
+  },
+  "runtime": {
+    "cache_dir": "~/.cache/fullstop-coreml/large",
+    "pattern": "mirrors Moonshine external-cache convention (~/.cache/moonshine-coreml/tiny-streaming)"
+  }
+}

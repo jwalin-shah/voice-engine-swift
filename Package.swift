@@ -25,7 +25,8 @@ let package = Package(
         .executableTarget(
             name: "VoiceEngineTests",
             dependencies: ["VoiceEngine"],
-            path: "Tests/Runner"
+            path: "Tests/Runner",
+            exclude: ["fullstop_tokenizer_fixtures.json"]
         ),
         .testTarget(
             name: "VoiceEngineSwiftPMTests",
