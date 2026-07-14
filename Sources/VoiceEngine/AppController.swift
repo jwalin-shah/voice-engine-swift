@@ -10,6 +10,11 @@ public final class AppController {
         let deferredCommand: CommandParser.VoiceCommand?
         var transcriptionMs: Double = 0
         var audioSecs: Double = 0
+        var rawText: String = ""
+        var cleanedText: String = ""
+        var encoderMs: Double = 0
+        var crossKVMs: Double = 0
+        var decoderMs: Double = 0
     }
 
     public enum State { case idle, recording, transcribing }
@@ -38,7 +43,7 @@ public final class AppController {
 
     private nonisolated static let logDir: URL = {
         let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/voice-engine")
+            .appendingPathComponent("voice-engine-logs")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: dir.appendingPathComponent("audio"), withIntermediateDirectories: true)
         return dir
@@ -198,28 +203,30 @@ public final class AppController {
                     let audioSecs = Double(rawFloats.count) / 16000.0
                     var timing: TranscribeTiming? = nil
                     var text = try engine.transcribeLong(rawAudio: rawFloats, timing: &timing)
+                    let rawText = text
                     if cs.mode != .disabled {
                         text = await cs.clean(text)
                     }
+                    let cleanedText = text
                     // Pure command detection
                     if let command = CommandParser.parse(text) {
-                        return TranscriptResult(text: "", immediateCommand: command, deferredCommand: nil, transcriptionMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1000, audioSecs: audioSecs)
+                        return TranscriptResult(text: "", immediateCommand: command, deferredCommand: nil, transcriptionMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1000, audioSecs: audioSecs, rawText: rawText, cleanedText: cleanedText, encoderMs: timing?.encoderMs ?? 0, crossKVMs: timing?.crossKVMs ?? 0, decoderMs: timing?.decoderMs ?? 0)
                     }
                     // Suffix command
-                    let rawText: String
+                    let rawTextOut: String
                     let deferredCmd: CommandParser.VoiceCommand?
                     if let (prefix, command) = CommandParser.extractCommand(from: text) {
                         let withVocab = VocabularyService.shared.process(prefix, frontAppBundleID: bundleID)
-                        rawText = withVocab.trimmingCharacters(in: .whitespacesAndNewlines)
+                        rawTextOut = withVocab.trimmingCharacters(in: .whitespacesAndNewlines)
                         deferredCmd = command
                     } else {
                         let withVocab = VocabularyService.shared.process(text, frontAppBundleID: bundleID)
-                        rawText = withVocab.trimmingCharacters(in: .whitespacesAndNewlines)
+                        rawTextOut = withVocab.trimmingCharacters(in: .whitespacesAndNewlines)
                         deferredCmd = nil
                     }
                     let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-                    NSLog("[VoiceEngine] transcription: \(String(format: "%.1f", elapsed)) ms, \(rawText.count) chars")
-                    return TranscriptResult(text: rawText, immediateCommand: nil, deferredCommand: deferredCmd, transcriptionMs: elapsed, audioSecs: audioSecs)
+                    NSLog("[VoiceEngine] transcription: \(String(format: "%.1f", elapsed)) ms, \(rawTextOut.count) chars")
+                    return TranscriptResult(text: rawTextOut, immediateCommand: nil, deferredCommand: deferredCmd, transcriptionMs: elapsed, audioSecs: audioSecs, rawText: rawText, cleanedText: cleanedText, encoderMs: timing?.encoderMs ?? 0, crossKVMs: timing?.crossKVMs ?? 0, decoderMs: timing?.decoderMs ?? 0)
                 }.value
                 try Task.checkCancellation()
                 if let command = commandResult.immediateCommand {
@@ -245,20 +252,38 @@ public final class AppController {
                 let cmdMs = commandResult.transcriptionMs
                 let cmdAudioSecs = commandResult.audioSecs
                 let hasDeferred = deferredCommand != nil
+                let rawTranscript = commandResult.rawText
+                let cleanedTranscript = commandResult.cleanedText
+                let encMs = commandResult.encoderMs
+                let kvMs = commandResult.crossKVMs
+                let decMs = commandResult.decoderMs
                 Task.detached(priority: .background) {
                     // Update JSON sidecar with transcription text (dataset pairing)
                     if let path = audioPath {
                         let jsonURL = URL(fileURLWithPath: path).deletingPathExtension().appendingPathExtension("json")
                         if var meta = try? JSONSerialization.jsonObject(with: Data(contentsOf: jsonURL)) as? [String: Any] {
                             meta["text"] = textToPaste
+                            meta["raw_text"] = rawTranscript
+                            meta["cleaned_text"] = cleanedTranscript
                             meta["transcription_ms"] = cmdMs
+                            meta["encoder_ms"] = encMs
+                            meta["cross_kv_ms"] = kvMs
+                            meta["decoder_ms"] = decMs
                             meta["audio_secs"] = cmdAudioSecs
-                            if let updated = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .withoutEscapingSlashes]) { try? updated.write(to: jsonURL) }
+                            if let updated = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .withoutEscapingSlashes]) {
+                                do { try updated.write(to: jsonURL) }
+                                catch { NSLog("[VoiceEngine] sidecar update write failed: \(error.localizedDescription)") }
+                            } else {
+                                NSLog("[VoiceEngine] sidecar update serialization failed for \(jsonURL.path)")
+                            }
                         }
                     }
 
                     Self.writeMetric(["event": "transcription", "is_command": hasDeferred,
                                  "transcription_ms": cmdMs,
+                                 "encoder_ms": encMs,
+                                 "cross_kv_ms": kvMs,
+                                 "decoder_ms": decMs,
                                  "audio_secs": cmdAudioSecs,
                                  "chars": textToPaste.count,
                                  "words": textToPaste.split(separator: " ").count,
@@ -266,15 +291,18 @@ public final class AppController {
                                  "audio_file": audioPath as Any])
 
                     let logPath = Self.logDir.appendingPathComponent("voice-history.txt")
-                    let fmt = DateFormatter()
-                    fmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                    let logLine = "\(fmt.string(from: Date())) | \(textToPaste)\n"
+                    let isoTs = ISO8601DateFormatter().string(from: Date())
+                    let logLine = "[\(isoTs)] \(textToPaste)\n"
                     if let handle = try? FileHandle(forWritingTo: logPath) {
                         handle.seekToEndOfFile()
                         if let data = logLine.data(using: .utf8) { handle.write(data) }
                         handle.closeFile()
                     } else {
-                        try? logLine.write(to: logPath, atomically: true, encoding: .utf8)
+                        do {
+                            try logLine.write(to: logPath, atomically: true, encoding: .utf8)
+                        } catch {
+                            NSLog("[VoiceEngine] voice-history write failed: \(error.localizedDescription)")
+                        }
                     }
                 }
             } catch is CancellationError {
@@ -303,45 +331,90 @@ public final class AppController {
         }
     }
 
-    /// Save float32 audio as a 32-bit float WAV file for later analysis.
-    private func saveAudio(floats: [Float], transcription: String?, app: String?) -> String? {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd-HH-mm-ss"
-        let name = fmt.string(from: Date()) + ".wav"
-        let url = Self.logDir.appendingPathComponent("audio/\(name)")
-        guard writeWAV(floats: floats, to: url) else { return nil }
-        // Save JSON sidecar with metadata (transcription, app, etc.) for dataset building
-        var meta: [String: Any] = ["ts": fmt.string(from: Date()), "duration_secs": Double(floats.count) / 16000.0]
+    /// Build the initial JSON sidecar metadata dictionary.
+    /// Public so tests can validate field identity without the full
+    /// recording/transcription pipeline.
+    public nonisolated static func sidecarMetadata(ts: Date, sampleCount: Int, transcription: String?, app: String?) -> [String: Any] {
+        var meta: [String: Any] = [
+            "ts": ISO8601DateFormatter().string(from: ts),
+            "duration_secs": Double(sampleCount) / 16000.0
+        ]
         if let t = transcription { meta["text"] = t }
         if let a = app { meta["app"] = a }
+        return meta
+    }
+
+    /// Save float32 audio as a 16-bit PCM WAV file for later analysis.
+    /// Returns the file path so the sidecar can be updated with transcription text.
+    private func saveAudio(floats: [Float], transcription: String?, app: String?) -> String? {
+        let now = Date()
+        let fileFmt = DateFormatter()
+        fileFmt.dateFormat = "yyyy-MM-dd_HH-mm-ss.SSS"   // sub-second resolution → collision-safe
+        let name = "voice_" + fileFmt.string(from: now) + ".wav"
+        let url = Self.logDir.appendingPathComponent("audio/\(name)")
+        guard Self.writeWAV(floats: floats, to: url) else { return nil }
+        // Save JSON sidecar with metadata (stable timestamp for pairing)
+        let meta = Self.sidecarMetadata(ts: now, sampleCount: floats.count,
+                                         transcription: transcription, app: app)
         if let jsonData = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .withoutEscapingSlashes]) {
             let jsonURL = url.deletingPathExtension().appendingPathExtension("json")
-            try? jsonData.write(to: jsonURL)
+            do {
+                try jsonData.write(to: jsonURL)
+            } catch {
+                NSLog("[VoiceEngine] JSON sidecar write failed: \(error.localizedDescription) — path=\(jsonURL.path)")
+            }
+        } else {
+            NSLog("[VoiceEngine] JSON sidecar serialization failed for \(name)")
         }
         return url.path
     }
 
-    private func writeWAV(floats: [Float], to url: URL) -> Bool {
+    /// Write 16-bit PCM WAV file from float32 samples in [-1.0, 1.0].
+    /// Public + nonisolated so tests can validate format correctness
+    /// without hopping onto the main actor.
+    public nonisolated static func writeWAV(floats: [Float], to url: URL) -> Bool {
         let sampleRate: UInt32 = 16000
         let channels: UInt16 = 1
-        let bitsPerSample: UInt16 = 32
-        let dataSize = UInt32(floats.count * 4)
+        let bitsPerSample: UInt16 = 16
+        let bytesPerSample = bitsPerSample / 8
+        // Convert float32 [-1.0, 1.0] → int16.
+        // Asymmetric scaling (32767 positive, 32768 negative) uses the
+        // full int16 range including -32768. NaN and infinities are
+        // explicitly handled — neither traps.
+        let samples16: [Int16] = floats.map { f in
+            if f.isNaN { return 0 }
+            let clamped = max(-1.0, min(1.0, f))
+            if clamped >= 0 {
+                return Int16(clamping: Int32(clamped * 32767.0))
+            } else {
+                return Int16(clamping: Int32(clamped * 32768.0))
+            }
+        }
+        let dataSize = UInt32(samples16.count * Int(bytesPerSample))
+        let byteRate = sampleRate * UInt32(channels) * UInt32(bytesPerSample)
+        let blockAlign = UInt16(channels) * bytesPerSample
         var wav = Data()
         func append<T: FixedWidthInteger>(_ v: T) { withUnsafeBytes(of: v.littleEndian) { wav.append(contentsOf: $0) } }
         wav.append(contentsOf: "RIFF".utf8)
         append(UInt32(36 + dataSize))
         wav.append(contentsOf: "WAVEfmt ".utf8)
-        append(UInt32(16))
-        append(UInt16(3))           // IEEE float
+        append(UInt32(16))          // fmt chunk size
+        append(UInt16(1))           // PCM format
         append(channels)
         append(sampleRate)
-        append(sampleRate * 4)
-        append(UInt16(4))
+        append(byteRate)
+        append(blockAlign)
         append(bitsPerSample)
         wav.append(contentsOf: "data".utf8)
         append(dataSize)
-        floats.withUnsafeBytes { wav.append(contentsOf: $0) }
-        return (try? wav.write(to: url)) != nil
+        samples16.withUnsafeBytes { wav.append(contentsOf: $0) }
+        do {
+            try wav.write(to: url)
+            return true
+        } catch {
+            NSLog("[VoiceEngine] WAV write failed: \(error.localizedDescription) — path=\(url.path)")
+            return false
+        }
     }
 
     private nonisolated static func writeMetric(_ fields: [String: Any]) {
