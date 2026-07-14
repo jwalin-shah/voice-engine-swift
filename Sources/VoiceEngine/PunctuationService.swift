@@ -21,7 +21,7 @@ import Foundation
 /// - Empty input returns empty output.
 /// - Inputs longer than maxSeqLen (256 tokens) are truncated.
 /// - Output is deterministic for a fixed model and runtime.
-public final class PunctuationService: @unchecked Sendable {
+public actor PunctuationService {
     /// Punctuation mode.
     public enum Mode: String, Codable, CaseIterable {
         case disabled = "Disabled"
@@ -111,23 +111,32 @@ public final class PunctuationService: @unchecked Sendable {
         let t0 = CFAbsoluteTimeGetCurrent()
 
         // 1. Tokenize.
+        let tTok = CFAbsoluteTimeGetCurrent()
         let tokResult = tokenizer.encode(trimmed, maxLength: maxSeqLen)
+        let tokMs = (CFAbsoluteTimeGetCurrent() - tTok) * 1000
 
         // 2. CoreML inference.
+        let tInf = CFAbsoluteTimeGetCurrent()
         let logits = try predict(inputIds: tokResult.inputIds, attentionMask: tokResult.attentionMask, model: model)
+        let infMs = (CFAbsoluteTimeGetCurrent() - tInf) * 1000
 
         // 3. Argmax → label IDs.
+        let tArg = CFAbsoluteTimeGetCurrent()
         let labelIds = argmax(logits: logits, seqLen: tokResult.inputIds.count, numLabels: Self.numLabels)
+        let argMs = (CFAbsoluteTimeGetCurrent() - tArg) * 1000
 
         // 4. Reconstruct punctuated text.
+        let tRec = CFAbsoluteTimeGetCurrent()
         let result = reconstruct(
             inputIds: tokResult.inputIds,
             labelIds: labelIds,
             tokenizer: tokenizer
         )
+        let recMs = (CFAbsoluteTimeGetCurrent() - tRec) * 1000
 
         let elapsed = (CFAbsoluteTimeGetCurrent() - t0) * 1000
-        Foundation.NSLog("[PunctuationService] restore: \(String(format: "%.1f", elapsed))ms, \(trimmed.count) chars → \(result.count) chars")
+        let realTokens = tokResult.attentionMask.reduce(0, +)  // count of 1s = non-pad tokens
+        Foundation.NSLog("[PunctuationService] restore: total=\(String(format: "%.1f", elapsed))ms, seqLen=\(tokResult.inputIds.count) real=\(realTokens), tok=\(String(format: "%.1f", tokMs))ms inf=\(String(format: "%.1f", infMs))ms arg=\(String(format: "%.1f", argMs))ms rec=\(String(format: "%.1f", recMs))ms, chars=\(trimmed.count)→\(result.count), input=\"\(trimmed)\"")
 
         return result
     }
