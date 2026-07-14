@@ -196,8 +196,11 @@ public final class AppController {
                     Self.writeMetric(["event": "vad_filtered", "samples": rawFloats.count])
                     return
                 }
-                // Save audio WAV before transcription (sidecar gets updated with text later)
-                let audioFile = saveAudio(floats: rawFloats, transcription: nil, app: bundleID)
+                // Save audio WAV + initial JSON off the main actor, in parallel with
+                // transcription — result awaited only after paste (never blocks the user).
+                let saveTask = Task.detached(priority: .userInitiated) {
+                    return Self.saveAudio(floats: rawFloats, transcription: nil, app: bundleID)
+                }
                 let commandResult: TranscriptResult = try await Task.detached(priority: .userInitiated) { [engine, bundleID, cs, rawFloats] in
                     let startTime = CFAbsoluteTimeGetCurrent()
                     let audioSecs = Double(rawFloats.count) / 16000.0
@@ -248,7 +251,9 @@ public final class AppController {
                 }
 
                 // Fire-and-forget: save training data, metrics, history in background.
-                let audioPath = audioFile
+                // Await the save task now — after paste, before background metadata enrichment.
+                // The save likely already completed in parallel with transcription.
+                let audioPath = await saveTask.value
                 let cmdMs = commandResult.transcriptionMs
                 let cmdAudioSecs = commandResult.audioSecs
                 let hasDeferred = deferredCommand != nil
@@ -346,7 +351,8 @@ public final class AppController {
 
     /// Save float32 audio as a 16-bit PCM WAV file for later analysis.
     /// Returns the file path so the sidecar can be updated with transcription text.
-    private func saveAudio(floats: [Float], transcription: String?, app: String?) -> String? {
+    /// Nonisolated static: uses only static members, safe to call from any actor.
+    private nonisolated static func saveAudio(floats: [Float], transcription: String?, app: String?) -> String? {
         let now = Date()
         let fileFmt = DateFormatter()
         fileFmt.dateFormat = "yyyy-MM-dd_HH-mm-ss.SSS"   // sub-second resolution → collision-safe
