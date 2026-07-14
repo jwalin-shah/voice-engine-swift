@@ -227,12 +227,14 @@ public final class AppController {
                     let deferredCmd: CommandParser.VoiceCommand?
                     if let (prefix, command) = CommandParser.extractCommand(from: text) {
                         let punctuated = (try? await ps.restore(prefix)) ?? prefix
-                        let withVocab = VocabularyService.shared.process(punctuated, frontAppBundleID: bundleID)
+                        let capitalized = CapitalizationService.capitalize(punctuated)
+                        let withVocab = VocabularyService.shared.process(capitalized, frontAppBundleID: bundleID)
                         rawTextOut = withVocab.trimmingCharacters(in: .whitespacesAndNewlines)
                         deferredCmd = command
                     } else {
                         let punctuated = (try? await ps.restore(text)) ?? text
-                        let withVocab = VocabularyService.shared.process(punctuated, frontAppBundleID: bundleID)
+                        let capitalized = CapitalizationService.capitalize(punctuated)
+                        let withVocab = VocabularyService.shared.process(capitalized, frontAppBundleID: bundleID)
                         rawTextOut = withVocab.trimmingCharacters(in: .whitespacesAndNewlines)
                         deferredCmd = nil
                     }
