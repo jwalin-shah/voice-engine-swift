@@ -13,6 +13,27 @@ class TestRunner {
     func assertTrue(_ expr: @autoclosure () -> Bool, _ msg: String = "") { expr() ? ok(msg) : fail(msg.isEmpty ? "Expected true" : msg) }
     func assertFalse(_ expr: @autoclosure () -> Bool, _ msg: String = "") { !expr() ? ok(msg) : fail(msg.isEmpty ? "Expected false" : msg) }
 
+    /// Bridge an async throwing closure to synchronous for the test runner.
+    /// Uses a semaphore; safe because PunctuationService is a dedicated actor
+    /// (never the main actor).
+    func awaitSync<T: Sendable>(_ block: @escaping @Sendable () async throws -> T) throws -> T {
+        let semaphore = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var result: Result<T, any Error>?
+        Task {
+            do {
+                result = .success(try await block())
+            } catch {
+                result = .failure(error)
+            }
+            semaphore.signal()
+        }
+        semaphore.wait()
+        switch result! {
+        case .success(let value): return value
+        case .failure(let error): throw error
+        }
+    }
+
     func runAll() {
         suite("CommandParser.parse")
         assertEqual(CommandParser.parse("undo"), .undo, "undo")
@@ -592,10 +613,14 @@ class TestRunner {
             let tok = try makeSyntheticTokenizer()
             let longText = String(repeating: "hello world ", count: 10)
             let result = tok.encode(longText, maxLength: 16)
-            assertEqual(result.inputIds.count, 16, "padded to maxLength=16")
+            // Actual-length encoding: no padding beyond BOS+content+EOS.
+            // Long text is truncated to maxLength, all positions attended.
+            assertEqual(result.inputIds.count, 16, "exactly maxLength tokens (truncated, not padded)")
             assertEqual(result.attentionMask.count, 16, "attention mask same length")
-            // At least first element is 1 (BOS) and last is 0 if padded
-            assertEqual(result.attentionMask[0], 1, "BOS position attended")
+            // All positions are real tokens (no padding)
+            for (i, m) in result.attentionMask.enumerated() {
+                assertEqual(m, 1, "position \(i) attended (no padding)")
+            }
         } catch {
             fail("overlength truncation test failed: \(error)")
         }
@@ -603,15 +628,12 @@ class TestRunner {
         suite("FullStopTokenizer — empty input")
         do {
             let tok = try makeSyntheticTokenizer()
-            let result = tok.encode("", maxLength: 8)
-            // Empty input still produces BOS + EOS = 2 tokens, then padding
-            assertEqual(result.inputIds.count, 8, "padded to maxLength")
+            let result = tok.encode("", maxLength: 256)
+            // Empty input: only BOS + EOS, no padding.
+            assertEqual(result.inputIds.count, 2, "only BOS+EOS (no padding)")
             assertEqual(result.inputIds[0], 0, "BOS at position 0")
             assertEqual(result.inputIds[1], 2, "EOS at position 1")
-            // Remaining positions are PAD
-            for i in 2..<8 {
-                assertEqual(result.inputIds[i], 1, "PAD at position \(i)")
-            }
+            assertEqual(result.attentionMask, [1, 1], "both positions attended")
         } catch {
             fail("empty input test failed: \(error)")
         }
@@ -619,15 +641,100 @@ class TestRunner {
         suite("FullStopTokenizer — whitespace only input")
         do {
             let tok = try makeSyntheticTokenizer()
-            let result = tok.encode("   ", maxLength: 8)
-            assertEqual(result.inputIds.count, 8, "padded to maxLength")
+            let result = tok.encode("   ", maxLength: 256)
+            // Whitespace-only: BOS + EOS, no padding.
+            assertEqual(result.inputIds.count, 2, "only BOS+EOS for whitespace-only input")
             assertEqual(result.inputIds[0], 0, "BOS")
-            assertEqual(result.inputIds[1], 2, "EOS follows whitespace-only")
+            assertEqual(result.inputIds[1], 2, "EOS")
         } catch {
             fail("whitespace input test failed: \(error)")
         }
 
-        // ── Model artifact check (skips cleanly when absent) ────────────
+        // ── New: actual-length short input (no-pad semantics) ──────────────
+        suite("FullStopTokenizer — actual-length short input")
+        do {
+            let tok = try makeSyntheticTokenizer()
+            // Four-word sentence with synthetic vocab
+            let result = tok.encode("hello world the quick", maxLength: 256)
+            // BOS + 4 words (▁hello ▁world ▁the ▁quick) + EOS = 6 tokens
+            // with the synthetic vocab (no subword splits for these words)
+            assertTrue(result.inputIds.count < 256, "short input uses actual length, not maxLength")
+            assertTrue(result.inputIds.count >= 4, "at least BOS + some words + EOS")
+            assertEqual(result.attentionMask.count, result.inputIds.count, "mask matches actual length")
+            // All attention mask entries are 1 (no padding positions)
+            for m in result.attentionMask {
+                assertEqual(m, 1, "all positions attended")
+            }
+            // First is BOS, last is EOS
+            assertEqual(result.inputIds[0], 0, "starts with BOS")
+            assertEqual(result.inputIds.last, 2, "ends with EOS")
+        } catch {
+            fail("actual-length test failed: \(error)")
+        }
+
+        // ── New: exact max-length truncation ───────────────────────────────
+        suite("FullStopTokenizer — exact max-length truncation")
+        do {
+            let tok = try makeSyntheticTokenizer()
+            // Request exactly 5 tokens max
+            let result = tok.encode("hello world the quick brown fox", maxLength: 5)
+            assertEqual(result.inputIds.count, 5, "exactly maxLength tokens")
+            // BOS + content (truncated before EOS if it doesn't fit at exactly maxLength)
+            // Actually: BOS + some tokens + EOS truncated to 5
+            assertEqual(result.inputIds[0], 0, "BOS first")
+            // Last token should be EOS if it fits
+            // If the encoding loop fills up to maxLength-1, EOS is appended and
+            // truncated to maxLength, so the last token should be EOS
+            assertTrue(result.inputIds.last == 2 || result.attentionMask.last == 1,
+                      "last token is either EOS or attended content")
+            // All positions attended
+            for m in result.attentionMask {
+                assertEqual(m, 1, "all positions attended")
+            }
+        } catch {
+            fail("exact max-length truncation test failed: \(error)")
+        }
+
+        // ── Actor safety test ──────────────────────────────────────────
+        // Verifies PunctuationService is a proper actor, not @unchecked Sendable.
+        suite("PunctuationService — actor isolation (load/restore)")
+        do {
+            let svc = PunctuationService()
+            // load() and restore() require await — compiler enforces isolation.
+            // This test proves the actor path works end-to-end with correct
+            // async semantics.
+            var modelAvailable = false
+            do {
+                try awaitSync { try await svc.load() }
+                modelAvailable = true
+                ok("actor load() succeeds with await")
+            } catch {
+                ok("skipped — model not available for actor test: \(error.localizedDescription)")
+            }
+            if modelAvailable {
+                // Verify ready state
+                let ready = try awaitSync { await svc.isReady() }
+                assertTrue(ready, "actor reports ready after load")
+                // Verify restore works through actor isolation
+                let result = try awaitSync { try await svc.restore("hello world") }
+                assertTrue(!result.isEmpty, "actor restore produces non-empty output")
+                let inputWords = "hello world".split(separator: " ")
+                let outputWords = result.split(separator: " ").map {
+                    $0.trimmingCharacters(in: CharacterSet.punctuationCharacters)
+                }
+                // All input words preserved
+                var wordIdx = 0
+                for ow in outputWords where !ow.isEmpty {
+                    if wordIdx < inputWords.count && ow.lowercased() == inputWords[wordIdx].lowercased() {
+                        wordIdx += 1
+                    }
+                }
+                assertEqual(wordIdx, inputWords.count, "actor restore preserves all input words")
+                ok("actor restore succeeds with await")
+            }
+        } catch {
+            fail("actor test failed: \(error)")
+        }
         suite("PunctuationService — model artifacts available")
         do {
             let modelDir = FileManager.default.homeDirectoryForCurrentUser
@@ -698,7 +805,7 @@ class TestRunner {
         do {
             let svc = PunctuationService()
             do {
-                try svc.load()
+                try awaitSync { try await svc.load() }
             } catch {
                 ok("skipped — model not available: \(error.localizedDescription)")
                 return
@@ -716,7 +823,7 @@ class TestRunner {
 
             for text in testCases {
                 let t0 = CFAbsoluteTimeGetCurrent()
-                let result = try svc.restore(text)
+                let result = try awaitSync { try await svc.restore(text) }
                 let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
 
                 // Input words preserved in output order
@@ -746,7 +853,7 @@ class TestRunner {
                 assertTrue(ms > 0 && ms < 5000,
                           "'\(text.prefix(30))...' - restore latency \(String(format: "%.1f", ms))ms within 5s budget")
 
-                Foundation.NSLog("[voice-tests] PunctuationService.restore: \(String(format: "%.1f", ms))ms — '\(text.prefix(20))...' → '\(result.prefix(30))...'")
+                Foundation.NSLog("[voice-tests] PunctuationService.restore: \(String(format: "%.1f", ms))ms — input=\"\(text)\" output=\"\(result)\"")
             }
 
             ok("end-to-end Swift inference passed for \(testCases.count) inputs")

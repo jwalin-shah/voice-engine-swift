@@ -104,7 +104,9 @@ public final class FullStopTokenizer: Sendable {
     /// Tokenize text into token IDs with BOS/EOS.
     /// - Parameter text: raw text to tokenize
     /// - Parameter maxLength: maximum sequence length (including BOS/EOS)
-    /// - Returns: ``TokenizeResult`` with input IDs and attention mask.
+    /// - Returns: ``TokenizeResult`` with input IDs and attention mask at the
+    ///   actual sequence length (no padding). Truncated to maxLength if the
+    ///   encoded sequence exceeds it.
     public func encode(_ text: String, maxLength: Int) -> TokenizeResult {
         let normalized = preTokenize(text)
         var ids: [Int] = [bosId]
@@ -118,24 +120,13 @@ public final class FullStopTokenizer: Sendable {
 
         ids.append(eosId)
 
-        // Ensure exactly maxLength with padding
-        let seqLen = min(ids.count, maxLength)
+        // Truncate to maxLength if needed; no padding — CoreML model accepts
+        // variable-length sequences (flexible sequence length declared in
+        // the converted mlpackage).
         let truncated = Array(ids.prefix(maxLength))
-        var mask = [Int](repeating: 1, count: seqLen)
-        if truncated.count > seqLen {
-            // truncated already equals maxLength, but seqLen could be less
-            // (happens when ids.count > maxLength: all positions are real tokens)
-            mask = [Int](repeating: 1, count: truncated.count)
-        }
+        let mask = [Int](repeating: 1, count: truncated.count)
 
-        var finalIds = truncated
-        if finalIds.count < maxLength {
-            let padCount = maxLength - finalIds.count
-            finalIds.append(contentsOf: [Int](repeating: padId, count: padCount))
-            mask.append(contentsOf: [Int](repeating: 0, count: padCount))
-        }
-
-        return TokenizeResult(inputIds: finalIds, attentionMask: mask)
+        return TokenizeResult(inputIds: truncated, attentionMask: mask)
     }
 
     /// TokenizeResult with input IDs and attention mask for CoreML inference.

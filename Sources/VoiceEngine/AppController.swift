@@ -226,12 +226,12 @@ public final class AppController {
                     let rawTextOut: String
                     let deferredCmd: CommandParser.VoiceCommand?
                     if let (prefix, command) = CommandParser.extractCommand(from: text) {
-                        let punctuated = (try? ps.restore(prefix)) ?? prefix
+                        let punctuated = (try? await ps.restore(prefix)) ?? prefix
                         let withVocab = VocabularyService.shared.process(punctuated, frontAppBundleID: bundleID)
                         rawTextOut = withVocab.trimmingCharacters(in: .whitespacesAndNewlines)
                         deferredCmd = command
                     } else {
-                        let punctuated = (try? ps.restore(text)) ?? text
+                        let punctuated = (try? await ps.restore(text)) ?? text
                         let withVocab = VocabularyService.shared.process(punctuated, frontAppBundleID: bundleID)
                         rawTextOut = withVocab.trimmingCharacters(in: .whitespacesAndNewlines)
                         deferredCmd = nil
@@ -345,7 +345,12 @@ public final class AppController {
         }
         Task {
             do {
-                try await Task.detached(priority: .utility) { [ps = punctuationService] in try ps.load() }.value
+                // Actor-isolated load: runs on PunctuationService's executor.
+                // Detached task inherits utility priority; await hops to the
+                // actor to execute the load, then returns.
+                try await Task.detached(priority: .utility) { [ps = punctuationService] in
+                    try await ps.load()
+                }.value
                 punctuationLoaded = true
                 updateMenu()
                 NSLog("[VoiceEngine] FullStop punctuation model loaded")
