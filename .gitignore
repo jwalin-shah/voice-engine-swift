@@ -42,3 +42,7 @@ test_data/*.wav
 test_data/*.flac
 test_data/*.mp3
 .claude/
+.venv/
+bench_data/
+Sources/VoiceEngine/ParakeetMLX/weights/
+Sources/VoiceEngine/ParakeetMLX/weights_bf16/
