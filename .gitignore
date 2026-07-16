@@ -41,3 +41,4 @@ test_data/*.m4a
 test_data/*.wav
 test_data/*.flac
 test_data/*.mp3
+.claude/
