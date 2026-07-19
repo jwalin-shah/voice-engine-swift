@@ -14,15 +14,22 @@ public enum Paster {
     public static func paste(_ text: String) -> Bool {
         guard !text.isEmpty else { return false }
 
+        // Save current clipboard contents so we can restore if paste fails.
+        let savedString = NSPasteboard.general.string(forType: .string)
+
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
 
         guard let src = CGEventSource(stateID: .hidSystemState),
               let down = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: true),
               let up = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: false) else {
-            // Text is on clipboard — user can paste manually.
-            NSLog("[VoiceEngine] WARNING: CGEvent failed, text on clipboard")
-            return true
+            // Paste failed — restore original clipboard contents.
+            NSPasteboard.general.clearContents()
+            if let saved = savedString {
+                NSPasteboard.general.setString(saved, forType: .string)
+            }
+            NSLog("[VoiceEngine] WARNING: CGEvent failed, clipboard restored")
+            return false
         }
         src.localEventsSuppressionInterval = 0
         down.flags = .maskCommand

@@ -63,12 +63,15 @@ public enum Bench {
         let url = URL(fileURLWithPath: path)
         guard let file = try? AVAudioFile(forReading: url) else { return nil }
 
-        let targetFormat = AVAudioFormat(
+        guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: 16000,
             channels: 1,
             interleaved: false
-        )!
+        ) else {
+            print("Failed to create 16kHz float32 audio format")
+            return nil
+        }
 
         let sourceFormat = file.processingFormat
         let frameCount = AVAudioFrameCount(file.length)

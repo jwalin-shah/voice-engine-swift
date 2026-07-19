@@ -52,7 +52,9 @@ public final class FullStopTokenizer: Sendable {
         }
 
         let data = try Data(contentsOf: compactPath)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw TokenizerError.invalidFormat("tokenizer_compact.json is not a dictionary")
+        }
 
         // Parse vocab: list of [piece, score] pairs ordered by HF token ID
         guard let vocabList = json["vocab"] as? [[Any]] else {

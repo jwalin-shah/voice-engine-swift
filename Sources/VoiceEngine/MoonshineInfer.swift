@@ -38,7 +38,8 @@ private enum C {
 
 public enum MoonshineError: LocalizedError {
     case notLoaded, modelNotFound(String), weightsNotFound(String),
-         tokenizerNotFound(String), inferenceFailed(String), emptyAudio
+         tokenizerNotFound(String), inferenceFailed(String), emptyAudio,
+         configParseError(String)
     public var errorDescription: String? {
         switch self {
         case .notLoaded: return "Engine not loaded — call load() first"
@@ -47,6 +48,7 @@ public enum MoonshineError: LocalizedError {
         case .tokenizerNotFound(let m): return "Tokenizer not found: \(m)"
         case .inferenceFailed(let m): return "Inference failed: \(m)"
         case .emptyAudio: return "Audio buffer is empty"
+        case .configParseError(let m): return "Config parse error: \(m)"
         }
     }
 }
@@ -150,15 +152,26 @@ public final class MoonshineEngine: @unchecked Sendable {
         decoder = try MLModel(contentsOf: decCompiled, configuration: decCfg)
 
         let cfgData = try Data(contentsOf: configPath)
-        let json = try JSONSerialization.jsonObject(with: cfgData) as! [String: Int]
+        guard let json = try JSONSerialization.jsonObject(with: cfgData) as? [String: Int] else {
+            throw MoonshineError.configParseError("weights/config.json is not a [String: Int] dictionary")
+        }
         // Support both v1 (HID) and v2 (ENC_HID + DEC_HID) config formats.
-        let encHid = json["ENC_HID"] ?? json["HID"]!
-        let decHid = json["DEC_HID"] ?? json["HID"]!
+        guard let hid = json["HID"],
+              let nl = json["NL"],
+              let h = json["H"],
+              let d = json["D"],
+              let sMax = json["S_MAX"],
+              let sEncMax = json["S_ENC_MAX"],
+              let rotDim = json["ROT_DIM"] else {
+            throw MoonshineError.configParseError("weights/config.json missing required keys (NL, H, D, HID, S_MAX, S_ENC_MAX, ROT_DIM)")
+        }
+        let encHid = json["ENC_HID"] ?? hid
+        let decHid = json["DEC_HID"] ?? hid
         let a = ArchConfig(
-            NL: json["NL"]!, H: json["H"]!, D: json["D"]!,
+            NL: nl, H: h, D: d,
             ENC_HID: encHid, DEC_HID: decHid,
-            S_MAX: json["S_MAX"]!, S_ENC_MAX: json["S_ENC_MAX"]!,
-            ROT_DIM: json["ROT_DIM"]!
+            S_MAX: sMax, S_ENC_MAX: sEncMax,
+            ROT_DIM: rotDim
         )
         arch = a
 
@@ -264,12 +277,16 @@ public final class MoonshineEngine: @unchecked Sendable {
         let encInName = encoder.modelDescription.inputDescriptionsByName.first!.key
         let encOutName = encoder.modelDescription.outputDescriptionsByName.first!.key
         let tEnc = CFAbsoluteTimeGetCurrent()
-        let encOut = try encoder.prediction(from: try MLDictionaryFeatureProvider(dictionary: [
+        let encOutPrediction = try encoder.prediction(from: try MLDictionaryFeatureProvider(dictionary: [
             encInName: audioML
-        ])).featureValue(for: encOutName)!.multiArrayValue!
+        ]))
+        guard let encOutFeature = encOutPrediction.featureValue(for: encOutName),
+              let encOutArray = encOutFeature.multiArrayValue else {
+            throw MoonshineError.inferenceFailed("Encoder did not produce expected output '\(encOutName)'")
+        }
         let encoderMs = (CFAbsoluteTimeGetCurrent() - tEnc) * 1000
 
-        let S_enc = encOut.shape[1].intValue
+        let S_enc = encOutArray.shape[1].intValue
         guard S_enc <= arch.S_ENC_MAX else {
             throw MoonshineError.inferenceFailed(
                 "Encoder output has \(S_enc) frames, exceeding decoder limit \(arch.S_ENC_MAX)"
@@ -280,7 +297,7 @@ public final class MoonshineEngine: @unchecked Sendable {
             Int(ceil(Double(originalSampleCount) * Double(arch.S_ENC_MAX) / Double(maxSamples))),
             S_enc
         ))
-        let hidden = mlToFloats(encOut)
+        let hidden = mlToFloats(encOutArray)
 
         // 3. Build cross-KV via Accelerate gemm.
         let weightsDir = modelDir.appendingPathComponent("weights")

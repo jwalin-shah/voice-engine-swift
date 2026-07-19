@@ -16,8 +16,8 @@ public final class AudioCapture {
     private var partialAccumulator = Data()
     private let queue = DispatchQueue(label: "voice.audio", qos: .userInitiated)
     private(set) public var isRecording = false
-    private let outputFormat: AVAudioFormat = {
-        AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
+    private let outputFormat: AVAudioFormat? = {
+        AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)
     }()
     private var converter: AVAudioConverter?
     public var partialCallback: ((Data) -> Void)?
@@ -114,6 +114,10 @@ public final class AudioCapture {
         let input = engine.inputNode
         try? input.setVoiceProcessingEnabled(false)
         let inputFormat = input.outputFormat(forBus: 0)
+        guard let outputFormat else {
+            NSLog("[AudioCapture] ERROR: failed to create 16kHz float32 output format")
+            return
+        }
         converter = AVAudioConverter(from: inputFormat, to: outputFormat)
         var bufferFrameSize = UInt32(64)
         var prop = AudioObjectPropertyAddress(
@@ -177,6 +181,7 @@ public final class AudioCapture {
 
     private func append(buffer: AVAudioPCMBuffer) {
         guard buffer.floatChannelData?[0] != nil else { return }
+        guard let outputFormat = self.outputFormat else { return }
         let n = Int(buffer.frameLength)
         let channels = Int(buffer.format.channelCount)
         let nativeFormat = buffer.format

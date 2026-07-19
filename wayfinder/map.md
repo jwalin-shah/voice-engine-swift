@@ -12,7 +12,7 @@ via Karabiner (Right Cmd tap).
 
 ## Current State
 
-- **Branch:** `wayfinder/voice-wip-20260714`
+- **Branch:** `main` (wayfinder branch `wayfinder/voice-wip-20260714` merged)
 - **Deployed:** Yes — running as PID 4736, LaunchAgent managed
 - **Build:** ✅ `swift build` passes
 - **Tests:** 348/349 pass
@@ -22,6 +22,8 @@ via Karabiner (Right Cmd tap).
 
 ## Recent work
 
+- Wayfinder branch merged to main
+- Branch `wayfinder/voice-wip-20260714` deleted
 - `1bfbb6e` — CapitalizationService (sentence-start + proper noun dict + pronoun i)
 - `df247fa` — PunctuationService restored as actor, tokenizer padding removed
 - `65f6e90` — FullStop punctuation model integrated (#19)
@@ -40,17 +42,15 @@ via Karabiner (Right Cmd tap).
 
 ### 🟡 Next
 
-4. **Merge wayfinder branch to main** — the `wayfinder/voice-wip-20260714` branch has 5 commits not on main. All features are stable. Merge once #1 and #3 are resolved.
+4. **ParakeetMLX integration** — TTS model weights exist but synthesis path is not wired into the app. Is this in scope?
 
-5. **ParakeetMLX integration** — TTS model weights exist but synthesis path is not wired into the app. Is this in scope?
-
-6. **Voice commands beyond dictation** — CommandParser handles undo, new-line, select, delete. What other commands should it support? What's the UX model?
+5. **Voice commands beyond dictation** — CommandParser handles undo, new-line, select, delete. What other commands should it support? What's the UX model?
 
 ### 🔵 Future
 
-7. **Test coverage for past bugs** — each fixed bug should have a regression test. Check git log for past fixes and verify coverage.
+6. **Test coverage for past bugs** — each fixed bug should have a regression test. Check git log for past fixes and verify coverage.
 
-8. **Benchmark suite** — transcription latency, punctuation accuracy, memory usage. Already has `bench-data/` directory.
+7. **Benchmark suite** — transcription latency, punctuation accuracy, memory usage. Already has `bench-data/` directory.
 
 ## Not yet specified
 
