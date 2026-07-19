@@ -46,3 +46,7 @@ test_data/*.mp3
 bench_data/
 Sources/VoiceEngine/ParakeetMLX/weights/
 Sources/VoiceEngine/ParakeetMLX/weights_bf16/
+
+# Xcode artifacts
+*.xcodeproj
+*.xcworkspace
