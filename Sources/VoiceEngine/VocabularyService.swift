@@ -100,10 +100,25 @@ public final class VocabularyService {
     // MARK: - Helpers
 
     private func firstWholeTriggerRange(_ trigger: String, in text: String) -> Range<String.Index>? {
-        let escaped = NSRegularExpression.escapedPattern(for: trigger)
-        let boundary = #"[\p{L}\p{N}_]"#
-        let pattern = #"(?<!\#(boundary))\#(escaped)(?!\#(boundary))"#
-        return text.range(of: pattern, options: [.regularExpression, .caseInsensitive, .diacriticInsensitive])
+        // ponytail: regex lookaround with \p{L} in ICU has subtle boundary bugs on
+        // macOS (e.g. "test" false-matches inside "testing"). Manual Swift Character
+        // property checks are correct and clearer.
+        var searchRange = text.startIndex..<text.endIndex
+        while let range = text.range(of: trigger, options: [.caseInsensitive, .diacriticInsensitive], range: searchRange) {
+            let beforeOk = range.lowerBound == text.startIndex || {
+                let before = text.index(before: range.lowerBound)
+                return !(text[before].isLetter || text[before].isNumber || text[before] == "_")
+            }()
+            let afterOk = range.upperBound == text.endIndex || {
+                let after = range.upperBound
+                return !(text[after].isLetter || text[after].isNumber || text[after] == "_")
+            }()
+            if beforeOk && afterOk {
+                return range
+            }
+            searchRange = range.upperBound..<text.endIndex
+        }
+        return nil
     }
 
     private func decodeArray<T: Codable>(forKey key: String) -> [T] {
